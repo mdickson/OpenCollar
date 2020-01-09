@@ -57,8 +57,15 @@ integer DIALOG_RESPONSE = -9001;
 integer g_iRestrictions1 = 0;
 integer g_iRestrictions2 = 0;
 
-string g_sChecked = "☑";
-string g_sUnChecked = "☐";
+integer bool(integer a){
+    if(a)return TRUE;
+    else return FALSE;
+}
+list g_lCheckboxes=["⬜","⬛"];
+string Checkbox(integer iValue, string sLabel) {
+    return llList2String(g_lCheckboxes, bool(iValue))+" "+sLabel;
+}
+
 
 // Default Macros will look like the old oc_rlvsuite Buttons
 list g_lMacros = ["Hear", 4, 0, "Talk" , 2, 0, "Touch", 0, 16384, "Stray", 29360128, 524288, "Rummage", 1342179328, 131168, "Dress", 0, 15, "IM", 384, 0, "Daze", 323584, 0, "Dazzle", 0, 16777216];
@@ -74,7 +81,7 @@ list g_lUtilityNone = ["BACK"];
 
 
 list g_lRLVList = [   // ButtonText, CategoryIndex, RLVCMD, Auth
-    "Emote"         , 0 , "emote"                               , 15 ,  // 1
+    "EmoteTrunc"    , 0 , "emote"                               , 15 ,   // 1
     "Send Chat"     , 0 , "sendchat"                            , 15 ,   // 2
     "See Chat"      , 0 , "recvchat"                            , 15 ,   // 3
     "See Emote"     , 0 , "recvemote"                           , 15 ,   // 4
@@ -186,21 +193,28 @@ MenuCategory(key kID, integer iAuth, string sCategory, integer iSetAccess)
     
     list lMenu = [];
     integer i;
-    for (i=1; i<llGetListLength(g_lRLVList);i=i+6) {
-        if (llList2Integer(g_lRLVList,i) == iCatIndex) {
-            if (iSetAccess) lMenu += [llList2String(g_lRLVList,i-1)];
-            else if (llList2Integer(g_lRLVList,i+4) >= iAuth){
-                if ((g_iRestrictions1 & llList2Integer(g_lRLVList,i+2)) || (g_iRestrictions2 & llList2Integer(g_lRLVList,i+3))) lMenu += [g_sChecked+llList2String(g_lRLVList,i-1)];
-                else lMenu += [g_sUnChecked+llList2String(g_lRLVList,i-1)];
+    
+    for(i=0; i<llGetListLength(g_lRLVList); i+= 4){
+        if(llList2Integer(g_lRLVList,i+1) == iCatIndex){
+            
+            if(iSetAccess) lMenu+= [llList2String(g_lRLVList,i)];
+            else {
+                integer Flag1 = llRound(llPow(2,(i/4)));
+                integer Flag2 = 0;
+                if((i/4)>=31){
+                    Flag1=0;
+                    Flag2 = llRound(llPow(2, (i/4)-30));
+                }
+                if(isAuthed(llList2Integer(g_lRLVList,i+3), iAuth)){
+                    if((g_iRestrictions1 & Flag1) || (g_iRestrictions2 & Flag2)) lMenu+= [Checkbox(TRUE, llList2String(g_lRLVList, i))];
+                    else lMenu += [Checkbox(FALSE, llList2String(g_lRLVList,i))];
+                }else {
+                }
             }
         }
     }
     if (iSetAccess) Dialog(kID, sPrompt, lMenu, g_lUtilityNone, 0, iAuth, "Restrictions~Access");
     else Dialog(kID, sPrompt, lMenu, g_lUtilityNone, 0, iAuth, "Restrictions~Category");
-}
-string TickBox(integer iCheck, string sLabel){
-    if(iCheck) return g_sChecked+sLabel;
-    else return g_sUnChecked+sLabel;
 }
 
 MenuSetAccess(key kID, integer iAuth, string sCommand)
@@ -211,7 +225,7 @@ MenuSetAccess(key kID, integer iAuth, string sCommand)
         g_sTmpRestName = sCommand;
         integer iCurrentAuth = llList2Integer(g_lRLVList,iIndex+5);
         
-        lButtons = [TickBox(Bool((iCurrentAuth&1)), "Owner"), TickBox(Bool((iCurrentAuth&2)), "Trusted"), TickBox(Bool((iCurrentAuth&4)), "Group"), TickBox(Bool((iCurrentAuth&8)), "Everyone")];
+        lButtons = [Checkbox(bool((iCurrentAuth&1)), "Owner"), Checkbox(bool((iCurrentAuth&2)), "Trusted"), Checkbox(bool((iCurrentAuth&4)), "Group"), Checkbox(bool((iCurrentAuth&8)), "Everyone")];
     }
     Dialog(kID, "Set who will have access to '"+sCommand+"'", lButtons, g_lUtilityNone, 0, iAuth, "Restrictions~SetPerm");
 }
@@ -269,6 +283,7 @@ list bitpos (integer flag1,integer flag2){
     return ret;
 }
 integer isAuthed(integer Flag, integer iAuth){   ///// TODO: Modify the MaskData to include the iAuth value to make this easier on memory with a one liner
+    
     if(Flag&1 && iAuth==CMD_OWNER)return TRUE;
     if(Flag&2 && iAuth==CMD_TRUSTED)return TRUE;
     if(Flag&4 && iAuth == CMD_GROUP)return TRUE;
@@ -294,7 +309,7 @@ integer CheckPermissions(integer iMask1, integer iMask2, key kID, integer iAuth)
     
     while(iMax2 >0){
         list lIndex=bitpos(0,iMax2);
-        integer iIndex = (llList2Integer(lIndex,1)*4)+30;
+        integer iIndex = (llList2Integer(lIndex,1)+30)*4;
         if(iIndex>-1 && iMax2 & iMask2 && (!isAuthed(llList2Integer(g_lRLVList, iIndex+3), iAuth) || iAuth == CMD_WEARER))lDenied+= llList2String(g_lRLVList,iIndex);
         iMax2=iMax2>>1;
     }
@@ -332,10 +347,6 @@ string FormatCommand(string sCommand,integer bEnable)
     
     return sCommand+sMod;
 }
-integer Bool(integer iTest){
-    if(iTest)return TRUE;
-    else return FALSE;
-}
 
 ApplyAll(integer iMask1, integer iMask2, integer iBoot)
 {
@@ -345,8 +356,10 @@ ApplyAll(integer iMask1, integer iMask2, integer iBoot)
     while (iMax1 > 0) {
         list pos = bitpos(iMax1, 0);
         integer iIndex = (llList2Integer(pos,0)*4)+2;
-        if (iIndex > -1 && Bool(iMax1 & iMask1) != Bool(iMax1 & g_iRestrictions1)) {
-                lResult += [FormatCommand(llList2String(g_lRLVList,iIndex), Bool(iMax1 & iMask1))];
+        
+        
+        if (iIndex > -1 && bool(iMax1 & iMask1) != bool(iMax1 & g_iRestrictions1)) {
+                lResult += [FormatCommand(llList2String(g_lRLVList,iIndex), bool(iMax1 & iMask1))];
         }
         iMax1 = iMax1 >> 1;
     }
@@ -354,8 +367,8 @@ ApplyAll(integer iMask1, integer iMask2, integer iBoot)
     while (iMax2 > 0) {
         list pos = bitpos(0,iMax2);
         integer iIndex = (llList2Integer(pos,1)*4)+30+2;
-        if (iIndex > -1 && Bool(iMax2 & iMask2) != Bool(iMax2 & g_iRestrictions2)) {
-                lResult += [FormatCommand(llList2String(g_lRLVList,iIndex),Bool(iMax2 & iMask2))];
+        if (iIndex > -1 && bool(iMax2 & iMask2) != bool(iMax2 & g_iRestrictions2)) {
+                lResult += [FormatCommand(llList2String(g_lRLVList,iIndex),bool(iMax2 & iMask2))];
         }
         iMax2 = iMax2 >> 1;
     }
@@ -377,30 +390,38 @@ ApplyCommand(string sCommand, integer iAdd,key kID, integer iAuth)
 {
    // llOwnerSay("Apply CMD");
     integer iMenuIndex = llListFindList(g_lRLVList,[sCommand]);
+    integer iActualIndex=iMenuIndex;
     integer iMenuIndex2;
-    if(iMenuIndex>=31){
-        iMenuIndex2 = (iMenuIndex-30);
+    if(iMenuIndex/4>=31){
+        iMenuIndex2 =(integer) llPow(2, (iMenuIndex/4)-30);
         iMenuIndex=0;
+    }else {
+        iMenuIndex2=0;
+        iMenuIndex = (integer)llPow(2, iMenuIndex/4);
     }
-    if (iMenuIndex > -1) {
-        integer authbit = llList2Integer(g_lRLVList, iMenuIndex+3);
+    
+    if (iActualIndex > -1) {
+        integer authbit = llList2Integer(g_lRLVList, iActualIndex+3);
         integer allow=FALSE;
         if(isAuthed(authbit,iAuth))allow=TRUE;
         
         if (allow){
             if (!iAdd) {
-                g_iRestrictions1 -= (integer)llPow(2,iMenuIndex/4);
-                g_iRestrictions2 -= (integer)llPow(2, iMenuIndex2/4);
-                llMessageLinked(LINK_SET,RLV_CMD,FormatCommand(llList2String(g_lRLVList,iMenuIndex+2),FALSE),"Macros");
-                if (kID != NULL_KEY) llOwnerSay(llList2String(g_lCategory, llList2Integer(g_lRLVList,iMenuIndex+1))+" - "+llList2String(g_lRLVList,iMenuIndex)+" is not restricted anymore!");
+                g_iRestrictions1 -= iMenuIndex;
+                g_iRestrictions2 -= iMenuIndex2;
+                
+                llMessageLinked(LINK_SET,RLV_CMD,FormatCommand(llList2String(g_lRLVList,iActualIndex+2),FALSE),"Macros");
+                if (kID != NULL_KEY) llOwnerSay(llList2String(g_lCategory, llList2Integer(g_lRLVList,iActualIndex+1))+" - "+llList2String(g_lRLVList,iActualIndex)+" is not restricted anymore!");
             } else {
-                g_iRestrictions1 += (integer)llPow(2, iMenuIndex/4);
-                g_iRestrictions2 += (integer)llPow(2, iMenuIndex2/4);
-                llMessageLinked(LINK_SET,RLV_CMD,FormatCommand(llList2String(g_lRLVList,iMenuIndex+2),TRUE),"Macros");
-                if (kID != NULL_KEY) llOwnerSay(llList2String(g_lCategory, llList2Integer(g_lRLVList,iMenuIndex+1))+" - "+llList2String(g_lRLVList,iMenuIndex)+" is now restricted!");
+                
+                g_iRestrictions1 += iMenuIndex;
+                g_iRestrictions2 += iMenuIndex2;
+                
+                llMessageLinked(LINK_SET,RLV_CMD,FormatCommand(llList2String(g_lRLVList,iActualIndex+2),TRUE),"Macros");
+                if (kID != NULL_KEY) llOwnerSay(llList2String(g_lCategory, llList2Integer(g_lRLVList,iActualIndex+1))+" - "+llList2String(g_lRLVList,iActualIndex)+" is now restricted!");
             }
             llMessageLinked(LINK_SET, LM_SETTING_SAVE, "rlvsuite_masks=" + (string)g_iRestrictions1+","+(string)g_iRestrictions2, "");
-        } else if (kID != NULL_KEY) llMessageLinked(LINK_SET, NOTIFY, "0"+"%NOACCESS% to change '"+llList2String(g_lCategory, llList2Integer(g_lRLVList,iMenuIndex+1))+" - "+llList2String(g_lRLVList,iMenuIndex)+"'", kID);
+        } else if (kID != NULL_KEY) llMessageLinked(LINK_SET, NOTIFY, "0"+"%NOACCESS% to change '"+llList2String(g_lCategory, llList2Integer(g_lRLVList,iActualIndex+1))+" - "+llList2String(g_lRLVList,iActualIndex)+"'", kID);
     }
 }
 
@@ -470,8 +491,9 @@ default
         if(llGetStartParameter()!=0)state inUpdate;
         g_iRLV = FALSE;
 //        llSetTimerEvent(1);
+//        llSay(0, llList2String(bitpos(64,1),0));
     }
-//    timer(){
+    //    timer(){
 //        llSetText("Free memory: "+(string)llGetFreeMemory()+"\n \n \n \n \n \n \n \n", <0,1,0>,1);
 //    }
     link_message(integer iSender,integer iNum,string sStr,key kID){
@@ -539,21 +561,24 @@ default
                 } else if (sMenu == "Restrictions~Category"){
                     if(sMsg == "BACK") MenuRestrictions(kAv,iAuth,FALSE);
                     else {
-                        sMsg = llGetSubString( sMsg, 1, -1);
+                        sMsg = llGetSubString( sMsg, 2, -1);
                         integer iMenuIndex = llListFindList(g_lRLVList,[sMsg]);
                         integer iMenuIndex2=0;
                         if(iMenuIndex/4 >=31){
-                            iMenuIndex2 = (iMenuIndex-30)/4;
+                            iMenuIndex2 = (iMenuIndex/4)-30;
                             iMenuIndex=0;
+                        } else {
+                            iMenuIndex /= 4;
                         }
+                        
                         if (iMenuIndex > -1) {
-                            if (g_iRestrictions1 & (integer)llPow(2,iMenuIndex/4) || g_iRestrictions2 & (integer)llPow(2,iMenuIndex/4)) {
+                            if (g_iRestrictions1 & (integer)llPow(2,iMenuIndex) || g_iRestrictions2 & (integer)llPow(2,iMenuIndex2)) {
                                 if (iAuth != CMD_WEARER) ApplyCommand(sMsg,FALSE,kAv, iAuth);
                                 else llMessageLinked(LINK_SET, NOTIFY, "0%NOACCESS%", kAv);
                             } else {
                                 ApplyCommand(sMsg,TRUE,kAv,iAuth);
                             }
-                            MenuCategory(kAv, iAuth, llList2String(g_lCategory, llList2Integer(g_lRLVList,iMenuIndex+1)),FALSE);
+                            MenuCategory(kAv, iAuth, llList2String(g_lCategory, llList2Integer(g_lRLVList,llListFindList(g_lRLVList,[sMsg])+1)),FALSE);
                         }
                     }
                 } else if (sMenu == "Restrictions~Access") {
@@ -571,7 +596,7 @@ default
                             integer mask = llList2Integer(g_lRLVList, iIndex+5);
                             
                             
-                            if(llGetSubString(sMsg,0,0) == g_sChecked){
+                            if(llGetSubString(sMsg,0,0) == llList2String(g_lCheckboxes,TRUE)){
                                 mask -= llList2Integer(g_lMaskData, llListFindList(g_lMaskData, [sLabel]));
                             }else{
                                 mask += llList2Integer(g_lMaskData, llListFindList(g_lMaskData, [sLabel]));
@@ -630,8 +655,8 @@ default
             if (llList2String(lParams, 0) == "rlvsuite_masks") {
                 list lMasks = llParseString2List(llList2String(lParams, 1),[","],[]);
                 if (g_iRLV) { // bad timing, RLV_ON was already called
-                    integer iMask1 = llList2Integer(lMasks, 0);
-                    integer iMask2 = llList2Integer(lMasks, 1);
+                    integer iMask1 =  (integer)llList2String(lMasks, 0);
+                    integer iMask2 = (integer)llList2String(lMasks, 1);
                     g_iRestrictions1 = 0;
                     g_iRestrictions2 = 0;
                     ApplyAll(iMask1,iMask2,TRUE);
@@ -641,6 +666,7 @@ default
                 }
             } else if (llList2String(lParams, 0) == "rlvsuite_macros") g_lMacros = llParseStringKeepNulls(llList2String(lParams, 1), ["^"],[]);
             else if (llList2String(lParams, 0) == "rlvsuite_auths") AuthSetting(llList2String(lParams, 1));
+            else if(llList2String(lParams,0) == "global_checkboxes") g_lCheckboxes = llCSV2List(llList2String(lParams,1));
         } else if (iNum == CMD_SAFEWORD || iNum == RLV_CLEAR || iNum == RLV_OFF){
             g_iRLV = FALSE;
             ApplyAll(0,0,FALSE);

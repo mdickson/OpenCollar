@@ -399,15 +399,9 @@ integer Auth(string sObjID) {
     else if (sID == g_sWearerID)
         iNum = CMD_WEARER;
     else if (g_iOpenAccess)
-        if(in_range((key)sID))
-            iNum = CMD_EVERYONE;
-        else
-            iNum = CMD_NOACCESS;
+        iNum = CMD_EVERYONE;
     else if (g_iGroupEnabled && (string)llGetObjectDetails((key)sObjID, [OBJECT_GROUP]) == (string)g_kGroup && (key)sID != g_sWearerID)  //meaning that the command came from an object set to our control group, and is not owned by the wearer
-        if(in_range((key)sID))
-            iNum = CMD_GROUP;
-        else
-            iNum = CMD_NOACCESS;
+        iNum = CMD_GROUP;
     else if (llSameGroup(sID) && g_iGroupEnabled && sID != g_sWearerID) {
         iNum = CMD_GROUP;
     } else
@@ -608,11 +602,49 @@ RunAway() {
     llResetScript();
 }
 list g_lRequests;
+
+
+
+ExtractPart(){
+    g_sScriptPart = llList2String(llParseString2List(llGetScriptName(), ["_"],[]),1);
+}
+
+string g_sScriptPart; // oc_<part>
+integer INDICATOR_THIS;
+SearchIndicators(){
+    ExtractPart();
+    
+    integer i=0;
+    integer end = llGetNumberOfPrims();
+    for(i=0;i<end;i++){
+        list Params = llParseStringKeepNulls(llList2String(llGetLinkPrimitiveParams(i,[PRIM_DESC]),0), ["~"],[]);
+        
+        if(llListFindList(Params, ["indicator_"+g_sScriptPart])!=-1){
+            INDICATOR_THIS = i;
+            return;
+        }
+    }
+    
+    
+}
+Indicator(integer iMode){
+    if(iMode){
+        llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,TRUE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_NONE,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.4]);
+        llSetTimerEvent(1);
+    }else
+        llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,FALSE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_HIGH,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.0]);
+}
+
 default {
     on_rez(integer iParam) {
         llResetScript();
     }
 
+    timer(){
+        Indicator(FALSE);
+        llSetTimerEvent(0);
+    }
+    
     state_entry() {
         if (llGetStartParameter()!=0){
             state inUpdate;
@@ -630,6 +662,7 @@ default {
     link_message(integer iSender, integer iNum, string sStr, key kID) {
         
         if (iNum == CMD_ZERO) { //authenticate messages on CMD_ZERO
+            Indicator(TRUE);
             llSetTimerEvent(0.22);
             integer iAuth = Auth(kID);
             if ( kID == g_sWearerID && sStr == "runaway") {   // note that this will work *even* if the wearer is blacklisted or locked out
@@ -699,11 +732,13 @@ default {
                 }
             }
         } else if (iNum == AUTH_REQUEST) {//The reply is: "AuthReply|UUID|iAuth" we rerute this to com to have the same prim ID 
+            Indicator(TRUE);
             llSetTimerEvent(0.22);
             llMessageLinked(iSender,AUTH_REPLY, "AuthReply|"+(string)kID+"|"+(string)Auth(kID), llGetSubString(sStr,0,35));
         } else if (iNum == DIALOG_RESPONSE) {
             integer iMenuIndex = llListFindList(g_lMenuIDs, [kID]);
             if (~iMenuIndex) {
+                Indicator(TRUE);
                 llSetTimerEvent(0.22);
                 list lMenuParams = llParseString2List(sStr, ["|"], []);
                 key kAv = (key)llList2String(lMenuParams, 0);
@@ -824,6 +859,11 @@ state inUpdate{
             if(sMsg == "do_move"){
                 
                 if(llGetLinkNumber()==LINK_ROOT)return;
+                
+                list Parameters = llParseStringKeepNulls(llList2String(llGetLinkPrimitiveParams(llGetLinkNumber(), [PRIM_DESC]),0), ["~"],[]);
+                ExtractPart();
+                Parameters += "indicator_"+g_sScriptPart;
+                llSetLinkPrimitiveParams(llGetLinkNumber(), [PRIM_DESC, llDumpList2String(Parameters,"~")]);
                 
                 llOwnerSay("Moving oc_auth!");
                 integer i=0;

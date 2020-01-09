@@ -19,6 +19,7 @@ key g_kURLLoadRequest;
 key g_kWearer;
 string g_sURL;
 key g_kConfirmLoadDialogID;
+integer g_iInUpdate=FALSE;
 
 integer LINK_CMD_DEBUG= 1999;
 //string g_sSettingToken = "settings_";
@@ -313,14 +314,64 @@ UserCommand(integer iAuth, string sStr, key kID) {
 
 
 
+ExtractPart(){
+    g_sScriptPart = llList2String(llParseString2List(llGetScriptName(), ["_"],[]),1);
+}
+
+string g_sScriptPart; // oc_<part>
+integer INDICATOR_THIS;
+SearchIndicators(){
+    ExtractPart();
+    
+    integer i=0;
+    integer end = llGetNumberOfPrims();
+    for(i=0;i<end;i++){
+        list Params = llParseStringKeepNulls(llList2String(llGetLinkPrimitiveParams(i,[PRIM_DESC]),0), ["~"],[]);
+        
+        if(llListFindList(Params, ["indicator_"+g_sScriptPart])!=-1){
+            INDICATOR_THIS = i;
+            return;
+        }
+    }
+    
+    
+}
+Indicator(integer iMode){
+    if(iMode){
+        llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,TRUE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_NONE,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.4]);
+        llSetTimerEvent(1);
+    }else
+        llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,FALSE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_HIGH,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.0]);
+}
+
 default {
     state_entry() {
-        if (llGetStartParameter()!=0){
-            state inUpdate;
-        }
-        
         // remove the intern_dist setting
         // Ensure that settings resets AFTER every other script, so that they don't reset after they get settings
+        if(llGetStartParameter() != 0) g_iInUpdate=TRUE; // do NOT spam linked messages
+        
+        if(g_iInUpdate && llGetLinkNumber()!= LINK_ROOT){
+            
+            list Parameters = llParseStringKeepNulls(llList2String(llGetLinkPrimitiveParams(llGetLinkNumber(), [PRIM_DESC]),0), ["~"],[]);
+            ExtractPart();
+            Parameters += "indicator_"+g_sScriptPart;
+            llSetLinkPrimitiveParams(llGetLinkNumber(), [PRIM_DESC, llDumpList2String(Parameters,"~")]);
+                
+        }
+        
+        if(g_iInUpdate && llGetLinkNumber()!=LINK_ROOT){
+            llOwnerSay("Moved oc_settings");
+            if(llGetInventoryType(".settings")==INVENTORY_NOTECARD){
+                key sendTo = llGetLinkKey(LINK_ROOT);
+                llGiveInventory(sendTo, ".settings");
+            }
+            
+            llSleep(1);
+            llRemoveInventory(llGetScriptName());
+            return;
+        }
+        
+        
         llSleep(0.5);
         g_kWearer = llGetOwner();
         g_iLineNr = 0;
@@ -336,6 +387,7 @@ default {
     on_rez(integer iParam) {
         if (g_kWearer == llGetOwner()) {
             g_iCheckNews = TRUE;
+            g_iInUpdate=FALSE;
             llSetTimerEvent(10.0);
             //llSleep(0.5); // brief wait for others to reset
             //llMessageLinked(LINK_SET,LINK_UPDATE,"LINK_SET","");
@@ -395,6 +447,7 @@ default {
     link_message(integer iSender, integer iNum, string sStr, key kID) {
         if (iNum == CMD_OWNER || iNum == CMD_WEARER) UserCommand(iNum, sStr, kID);
         else if (iNum == LM_SETTING_SAVE) {
+            Indicator(TRUE);
             //save the token, value
             list lParams = llParseString2List(sStr, ["="], []);
             string sToken = llList2String(lParams, 0);
@@ -409,6 +462,7 @@ default {
         }
         else if (iNum == LM_SETTING_REQUEST) {
              //check the cache for the token
+             Indicator(TRUE);
             if (SettingExists(sStr)) llMessageLinked(LINK_SET, LM_SETTING_RESPONSE, sStr + "=" + GetSetting(sStr), "");
             else if (sStr == "ALL") {
                 g_iCheckNews = FALSE;
@@ -418,6 +472,7 @@ default {
         else if (iNum == LM_SETTING_DELETE){
             //llMessageLinked(LINK_SET, LM_SETTING_DELETE,sStr,"");
             DelSetting(sStr);
+            Indicator(TRUE);
         } else if(iNum == LM_SETTING_RELAY_CONTENT) LoadSetting(sStr, (integer)((string)kID));
         else if (iNum == DIALOG_RESPONSE && kID == g_kConfirmDialogID) {
             list lMenuParams = llParseString2List(sStr, ["|"], []);
@@ -447,13 +502,19 @@ default {
             llInstantMessage(kID, llGetScriptName() +" lSettings length: "+(string)llGetListLength(g_lSettings));
 
             PrintSettings(kID, "");
+        } else if(iNum == -99999){
+            if(sStr == "update_active"){
+                g_iInUpdate=TRUE;
+            }
+        } else if(iNum == REBOOT){
+            g_iInUpdate=FALSE;
         }
     }
 
     timer() {
         llSetTimerEvent(0.0);
         SendValues();
-        if (g_iCheckNews) g_kURLRequestID = llHTTPRequest(g_sEmergencyURL+"attn.txt",[HTTP_METHOD,"GET",HTTP_VERBOSE_THROTTLE,FALSE],"");
+        Indicator(FALSE);
     }
 
     changed(integer iChange) {
@@ -468,36 +529,8 @@ default {
                 }
             } else {
                 llSetTimerEvent(1.0);   //pause, then send values if inventory changes, in case script was edited and needs its settings again
-                SendValues();
-            }
-        }
-    }
-}
-
-state inUpdate{
-    link_message(integer iSender, integer iNum, string sMsg, key kID){
-        if(iNum == REBOOT)llResetScript();
-        else if(iNum == 0){
-            if(sMsg == "do_move"){
-                
-                if(llGetLinkNumber()==LINK_SET)return;
-                
-                llOwnerSay("Moving "+llGetScriptName()+"!");
-                integer i=0;
-                integer end=llGetInventoryNumber(INVENTORY_ALL);
-                for(i=0;i<end;i++){
-                    string item = llGetInventoryName(INVENTORY_ALL,i);
-                    if(llGetInventoryType(item)==INVENTORY_SCRIPT && item!=llGetScriptName()){
-                        llRemoveInventory(item);
-                    }else if(llGetInventoryType(item)!=INVENTORY_SCRIPT){
-                        llGiveInventory(kID, item);
-                        llRemoveInventory(item);
-                        i=-1;
-                        end=llGetInventoryNumber(INVENTORY_ALL);
-                    }
-                }
-                
-                llRemoveInventory(llGetScriptName());
+                if(!g_iInUpdate)
+                    SendValues();
             }
         }
     }

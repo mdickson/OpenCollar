@@ -567,6 +567,35 @@ UserCommand(integer iNum, string sStr, key kID) {
   } 
 }
 
+ExtractPart(){
+    g_sScriptPart = llList2String(llParseString2List(llGetScriptName(), ["_"],[]),1);
+}
+
+string g_sScriptPart; // oc_<part>
+integer INDICATOR_THIS;
+SearchIndicators(){
+    ExtractPart();
+    
+    integer i=0;
+    integer end = llGetNumberOfPrims();
+    for(i=0;i<end;i++){
+        list Params = llParseStringKeepNulls(llList2String(llGetLinkPrimitiveParams(i,[PRIM_DESC]),0), ["~"],[]);
+        
+        if(llListFindList(Params, ["indicator_"+g_sScriptPart])!=-1){
+            INDICATOR_THIS = i;
+            return;
+        }
+    }
+    
+    
+}
+Indicator(integer iMode){
+    if(iMode)
+        llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,TRUE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_NONE,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.4]);
+    else
+        llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,FALSE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_HIGH,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.0]);
+}
+
 default {
     on_rez(integer iNum) {
 
@@ -593,6 +622,7 @@ default {
             llRequestPermissions(g_kWearer, PERMISSION_TRIGGER_ANIMATION | PERMISSION_OVERRIDE_ANIMATIONS);
         }
         CreateAnimList();
+        SearchIndicators();
         //Debug("Starting");
     }
     
@@ -700,15 +730,19 @@ default {
                     //Debug("Got message " + sMessage);
                     if (sMessage == "BACK") {
                         llMessageLinked(LINK_SET, iAuth, "menu Main", kAv);
+                        return;
                     } else if (sMessage == "Pose") {
                         PoseMenu(kAv, 0, iAuth);
+                        return;
                     } else if (llGetSubString(sMessage, 2, -1) == "AntiSlide") {
                         PoseMoveMenu(kAv, iAuth);
+                        return;
                     } else if (~llListFindList(g_lAnimButtons, [sMessage])) {
                         llMessageLinked(LINK_SET, iAuth, "menu " + sMessage, kAv);  // SA: can be child scripts menus, not handled in UserCommand()
                     } else if (sMessage == "AO Menu") {
                         llMessageLinked(LINK_SET, NOTIFY, "0" + "\n\nAttempting to trigger the AO menu. This will only work if %WEARERNAME% is using an OpenCollar AO or an AO Link script in their AO HUD.\n", kAv);
                         AOMenu(kAv, iAuth);
+                        return;
                     } else {
                         integer stat = llListFindList(g_lCheckboxes, [llGetSubString(sMessage,0,0)]);
                         string cmd = llToLower(llGetSubString(sMessage,2,-1));
@@ -846,6 +880,12 @@ state inUpdate{
             if(sMsg == "do_move" && !g_iIsMoving){
                 
                 if(llGetLinkNumber()==LINK_ROOT)return;
+                
+                list Parameters = llParseStringKeepNulls(llList2String(llGetLinkPrimitiveParams(llGetLinkNumber(), [PRIM_DESC]),0), ["~"],[]);
+                ExtractPart();
+                Parameters += "indicator_"+g_sScriptPart;
+                llSetLinkPrimitiveParams(llGetLinkNumber(), [PRIM_DESC, llDumpList2String(Parameters,"~")]);
+                
                 g_iIsMoving=TRUE;
                 llOwnerSay("Moving oc_anim!");
                 integer i=0;
