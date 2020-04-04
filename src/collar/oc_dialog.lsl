@@ -490,6 +490,7 @@ SearchIndicators(){
     
 }
 Indicator(integer iMode){
+    if(INDICATOR_THIS==-1)return;
     if(iMode)
         llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,TRUE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_NONE,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.4]);
     else
@@ -656,7 +657,8 @@ default {
             else if (sToken == g_sGlobalToken+"DeviceType") g_sDeviceType = sValue;
             else if (sToken == g_sGlobalToken+"DeviceName") {
                 g_sDeviceName = sValue;
-                llSetLinkPrimitiveParamsFast(LINK_ROOT,[PRIM_NAME,g_sDeviceName]);
+                //llSetObjectName(g_sDeviceName);
+//                llSetLinkPrimitiveParamsFast(LINK_ROOT,[PRIM_NAME,g_sDeviceName]);
             } else if (sToken == g_sGlobalToken+"WearerName") {
                 if (llSubStringIndex(sValue, "secondlife:///app/agent"))
                     g_sWearerName =  "["+NameURI(g_kWearer)+" " + sValue + "]";
@@ -667,6 +669,15 @@ default {
             else if (sToken == "auth_owner")
                 g_lOwners = llParseString2List(sValue, [","], []);
             else if(sToken == g_sGlobalToken + "showlevel") g_iShowLevel = (integer)sValue;
+            else if(sToken == "auth_block"){
+                list lBlock = llParseString2List(sValue,[","],[]);
+                
+                integer iPos =0;
+                integer iEnd = llGetListLength(lBlock);
+                for(iPos=0;iPos<iEnd;iPos++){
+                    ClearUser((key)llList2String(lBlock, iPos));
+                }
+            }
         } else if (iNum == LOADPIN && sStr == llGetScriptName()) {
             integer iPin = (integer)llFrand(99999.0)+1;
             llSetRemoteScriptAccessPin(iPin);

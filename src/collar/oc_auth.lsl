@@ -489,7 +489,8 @@ UserCommand(integer iNum, string sStr, key kID, integer iRemenu) { // here iNum:
         } else {
             string sTmpID2 = llList2String(lParams,3);
             if(sTmpID2 != ""){
-                g_lRequests = [llHTTPRequest("http://w-hat.com/name2key/"+sTmpID+"."+sTmpID2,[],""), sCommand, sAction, kID];
+                g_lRequests = [llRequestUserKey(sTmpID+" "+sTmpID2), sCommand, sAction, kID];
+                //llHTTPRequest("http://w-hat.com/name2key/"+sTmpID+"."+sTmpID2,[],""), sCommand, sAction, kID];
             } else
                 Dialog(kID, "\nChoose who to add to the "+sAction+" list:\n",[sTmpID],[">Wearer<",UPMENU],0,iNum,"AddAvi"+sAction, TRUE);
         }
@@ -628,12 +629,13 @@ SearchIndicators(){
     
 }
 Indicator(integer iMode){
-    if(iMode){
+    if(INDICATOR_THIS==-1)return;
+    if(iMode)
         llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,TRUE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_NONE,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.4]);
-        llSetTimerEvent(1);
-    }else
+    else
         llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,FALSE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_HIGH,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.0]);
 }
+
 
 default {
     on_rez(integer iParam) {
@@ -839,13 +841,13 @@ default {
 */
     }
 
-    http_response(key kRequest, integer iStatus, list lMeta, string sBody){
-        integer iPos = llListFindList(g_lRequests,[kRequest]);
+    dataserver(key kReq, string sData){
+        integer iPos = llListFindList(g_lRequests,[kReq]);
         if(iPos!=-1){
             if(llList2String(g_lRequests,iPos+1)=="add")
-                AddUniquePerson((key)sBody, llList2String(g_lRequests,iPos+2), (key)llList2String(g_lRequests,iPos+3));
+                AddUniquePerson((key)sData, llList2String(g_lRequests,iPos+2), (key)llList2String(g_lRequests,iPos+3));
             else
-                RemovePerson((key)sBody, llList2String(g_lRequests,iPos+2), (key)llList2String(g_lRequests,iPos+3), FALSE);
+                RemovePerson((key)sData, llList2String(g_lRequests,iPos+2), (key)llList2String(g_lRequests,iPos+3), FALSE);
             
             g_lRequests=llDeleteSubList(g_lRequests, iPos,iPos+3);
         }

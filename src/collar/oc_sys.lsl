@@ -10,12 +10,12 @@
 //on menu request, give dialog, with alphabetized list of submenus
 //on listen, send submenu link message
 
-string g_sDevStage="RC 1";
+string g_sDevStage="RC 3";
 string g_sCollarVersion="7.4";
 
 integer g_iCaptureIsActive=FALSE; // this is a fix for ensuring proper permissions with capture
 integer g_iLatestVersion=TRUE;
-float g_fBuildVersion = 0.5;
+float g_fBuildVersion = 1.0;
 
 key g_kWearer;
 // Entries for the .settings relay
@@ -432,6 +432,7 @@ BuildLockElementList() {//EB
 }
 
 PermsCheck() {
+    if(!g_iFirstInit)return;
     if (!(llGetObjectPermMask(MASK_OWNER) & PERM_MODIFY)) {
         llOwnerSay("You have been given a no-modify OpenCollar object.  This could break future updates.  Please ask the provider to make the object modifiable.");
     }
@@ -456,6 +457,8 @@ PermsCheck() {
             }
         }
     }
+    
+    g_iFirstInit=FALSE;
 }
 
 
@@ -524,14 +527,14 @@ StartUpdate(){
     llSetRemoteScriptAccessPin(pin);
     llRegionSayTo(g_kUpdaterOrb, g_iUpdateChan, "ready|" + (string)pin );
 }
-
+integer g_iFirstInit=FALSE;
 default {
     state_entry() {
         if(llGetStartParameter()!=0)state inUpdate;
         
         g_kWearer = llGetOwner();
         BuildLockElementList();
-        
+        g_iFirstInit=TRUE;
         llSleep(10.0);
         init();
         //Debug("Starting, max memory used: "+(string)llGetSPMaxMemory());
@@ -539,8 +542,14 @@ default {
     }
 
     link_message(integer iSender, integer iNum, string sStr, key kID) {
-        if(sStr == "debug")llMessageLinked(LINK_SET,LINK_CMD_DEBUG,"",kID);
-        if(sStr == "versions")llMessageLinked(LINK_SET,LINK_CMD_DEBUG,"ver",kID);
+        if(sStr == "debug" && iNum==0){
+            llMessageLinked(LINK_SET,LINK_CMD_DEBUG,"",kID);
+            return;
+        }
+        if(sStr == "versions" && iNum==0){
+            llMessageLinked(LINK_SET,LINK_CMD_DEBUG,"ver",kID);
+            return;
+        }
         if (iNum == MENUNAME_RESPONSE) {
             //sStr will be in form of "parent|menuname"
             list lParams = llParseString2List(sStr, ["|"], []);

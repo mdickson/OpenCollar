@@ -146,13 +146,15 @@ AnimMenu(key kID, integer iAuth) {
     lButtons += [Checkbox(g_bAnimLock, "AnimLock")];
 
     if (llGetInventoryType("~stiff") == INVENTORY_ANIMATION) {
+        lButtons += Checkbox(g_bPosture, "Posture");
         if (g_bPosture) {
             sPrompt += " and has their neck forced stiff.";
         } else {
             sPrompt += " and can relax their neck.";
         }
+    } else {
+        sPrompt += "\n* Posture unavailable because the ~stiff anim is not present";
     }
-    lButtons += Checkbox(g_bPosture, "Posture");
 
     lButtons += Checkbox(g_bTweakPoseAO, "AntiSlide");
     lButtons += ["AO Menu", "AO ON", "AO OFF", "Pose"];
@@ -511,6 +513,7 @@ UserCommand(integer iNum, string sStr, key kID) {
       AOMenu(kID, iNum);
     } else if (sValue == "off" || sValue == "on") {
       MessageAOs(llToUpper(sValue), "AO");
+        AnimMenu(kID, iNum);
     } else {
       llMessageLinked(LINK_SET, ATTACHMENT_RESPONSE, "CollarCommand|" + (string)EXT_CMD_COLLAR + "|ZHAO_" + sStr + "|" + (string)kID, kID);
     }
@@ -590,11 +593,13 @@ SearchIndicators(){
     
 }
 Indicator(integer iMode){
+    if(INDICATOR_THIS==-1)return;
     if(iMode)
         llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,TRUE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_NONE,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.4]);
     else
         llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,FALSE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_HIGH,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.0]);
 }
+
 
 default {
     on_rez(integer iNum) {
@@ -683,7 +688,8 @@ default {
                     list lAnimParams = llParseString2List(sValue, [","], []);
                     g_sCurrentPose = llList2String(lAnimParams, 0);
                     g_iLastRank = (integer)llList2String(lAnimParams, 1);
-                    StartAnim(g_sCurrentPose);
+                    if(llGetListLength(g_lAnims)>0&&llList2String(g_lAnims,0)==g_sCurrentPose){}else
+                        StartAnim(g_sCurrentPose);
                 }
                 else if (sToken == "animlock") g_bAnimLock = (integer)sValue;
                 else if (sToken =="posture") SetPosture((integer)sValue, NULL_KEY);
@@ -734,7 +740,7 @@ default {
                     } else if (sMessage == "Pose") {
                         PoseMenu(kAv, 0, iAuth);
                         return;
-                    } else if (llGetSubString(sMessage, 2, -1) == "AntiSlide") {
+                    } else if (sMessage == Checkbox(g_bTweakPoseAO, "AntiSlide")){
                         PoseMoveMenu(kAv, iAuth);
                         return;
                     } else if (~llListFindList(g_lAnimButtons, [sMessage])) {
@@ -746,6 +752,7 @@ default {
                     } else {
                         integer stat = llListFindList(g_lCheckboxes, [llGetSubString(sMessage,0,0)]);
                         string cmd = llToLower(llGetSubString(sMessage,2,-1));
+                        
                           
                         if(stat==-1){
                             UserCommand(iAuth,sMessage,kAv);
@@ -753,9 +760,9 @@ default {
                         }
                         if(stat) UserCommand(iAuth, cmd+" off",kAv);
                         else if(!stat) UserCommand(iAuth, cmd+" on",kAv);
+                        AnimMenu(kAv, iAuth);
                           
                     }
-                    AnimMenu(kAv, iAuth);
                 
                 } else if (sMenuType == "Pose") {
                     if (sMessage == "BACK") {

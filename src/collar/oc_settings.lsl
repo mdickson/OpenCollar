@@ -17,6 +17,7 @@ list g_lExceptionTokens = ["texture","glow","shininess","color","intern"];
 key g_kLoadFromWeb;
 key g_kURLLoadRequest;
 key g_kWearer;
+integer g_iNoComma=FALSE; // default is false
 string g_sURL;
 key g_kConfirmLoadDialogID;
 integer g_iInUpdate=FALSE;
@@ -97,6 +98,7 @@ list SetSetting(list lCache, string sToken, string sValue) {
 
 string GetSetting(string sToken) {
     integer i = llListFindList(g_lSettings, [sToken]);
+    if(i == -1)return "NOT_FOUND";
     return llList2String(g_lSettings, i + 1);
 }
 
@@ -219,39 +221,53 @@ LoadSetting(string sData, integer iLine) {
             return;
         }
         i = llSubStringIndex(sData, "=");
-        sID = llGetSubString(sData, 0, i - 1);
-        sData = llGetSubString(sData, i + 1, -1);
-        if (~llSubStringIndex(llToLower(sID), "_")) return;
-        else if (~llListFindList(g_lExceptionTokens,[sID])) return;
-        sID = llToLower(sID)+"_";
-        list lData = llParseString2List(sData, ["~"], []);
-        for (i = 0; i < llGetListLength(lData); i += 2) {
-            sToken = llList2String(lData, i);
-            sValue = llList2String(lData, i + 1);
-            if (sValue != "") {
-                if (sID == "auth_") { //if we have auth, can only be the below, else we dont care
-                    sToken = llToLower(sToken);
-                    if (~llListFindList(["block","trust","owner"],[sToken])) {
-                        list lTest = llParseString2List(sValue,[","],[]);
-                        list lOut;
-                        integer n;
-                        do {//sanity check for valid entries
-                            if (llList2Key(lTest,n)) //if this is not a valid key, it's useless
-                                lOut += llList2String(lTest,n);
-                            integer iTest = llGetListLength(lOut);
-                            if (sToken == "owner" &&  iTest == 3)  jump next;
-                            else if (sToken == "trust" &&  iTest == 15)  jump next;
-                            else if (sToken == "block" &&  iTest == 9)  jump next;
-                        } while (++n < llGetListLength(lTest));
-                        @next;
-                        sValue = llDumpList2String(lOut,",");
-                        lTest = [];
-                        lOut = [];
-                    }
+        if(i!=-1){
+            sID = llGetSubString(sData, 0, i - 1);
+            sData = llGetSubString(sData, i + 1, -1);
+            if (~llSubStringIndex(llToLower(sID), "_")) return;
+            else if (~llListFindList(g_lExceptionTokens,[sID])) return;
+            sID = llToLower(sID)+"_";
+            list lData = llParseString2List(sData, ["~"], []);
+            for (i = 0; i < llGetListLength(lData); i += 2) {
+                sToken = llList2String(lData, i);
+                sValue = llList2String(lData, i + 1);
+                if (sValue != "") {
+                    g_lSettings = SetSetting(g_lSettings, sID + sToken, sValue);
+                    
+                    if(llToLower(sID+sToken)=="settings_nocomma") g_iNoComma=(integer)sValue;
                 }
-                if (sValue) g_lSettings = SetSetting(g_lSettings, sID + sToken, sValue);
+            }
+        } else {
+            i=llSubStringIndex(sData,"+");
+            sID = llGetSubString(sData,0,i-1);
+            sData = llGetSubString(sData,i+1,-1);
+            
+            if(~llSubStringIndex(llToLower(sID),"_"))return;
+            else if(~llListFindList(g_lExceptionTokens,[sID]))return;
+            sID = llToLower(sID)+"_";
+            list lData = llParseString2List(sData, ["~"],[]);
+            for(i=0;i<llGetListLength(lData);i+=2){
+                sToken= llList2String(lData,i);
+                sValue = llList2String(lData,i+1);
+                if(sValue!=""){
+                    string sPreExistingValue = GetSetting(sID+sToken);
+                    if(sPreExistingValue!="NOT_FOUND"){
+                        if(llSubStringIndex(sPreExistingValue, sValue)==-1){
+                            if(!g_iNoComma)
+                                sPreExistingValue+=","+sValue;
+                            else
+                                sPreExistingValue+=sValue;
+                        }
+                    }
+                    else{
+                        sPreExistingValue=sValue;
+                    }
+                    g_lSettings = SetSetting(g_lSettings,sID+sToken,sPreExistingValue);
+                }
             }
         }
+            
+        
     }
 }
 
@@ -337,6 +353,7 @@ SearchIndicators(){
     
 }
 Indicator(integer iMode){
+    if(INDICATOR_THIS==-1)return;
     if(iMode){
         llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,TRUE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_NONE,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.4]);
         llSetTimerEvent(1);
@@ -382,16 +399,18 @@ default {
              g_kCardID = llGetInventoryKey(g_sCard);
             } else if (g_lSettings) llMessageLinked(LINK_SET, LM_SETTING_RESPONSE, llDumpList2String(g_lSettings, "="), "");
         }
+        
+        
+       /// llSay(0, "debug: settings was reset");
     }
 
     on_rez(integer iParam) {
         if (g_kWearer == llGetOwner()) {
-            g_iCheckNews = TRUE;
             g_iInUpdate=FALSE;
             llSetTimerEvent(10.0);
             //llSleep(0.5); // brief wait for others to reset
             //llMessageLinked(LINK_SET,LINK_UPDATE,"LINK_SET","");
-            //SendValues();
+            SendValues();
         } else llResetScript();
     }
 
@@ -453,10 +472,6 @@ default {
             string sToken = llList2String(lParams, 0);
             string sValue = llList2String(lParams, 1);
             g_lSettings = SetSetting(g_lSettings, sToken, sValue);
-            if (sToken == "intern_news") {
-                g_fLastNewsStamp = (float)sValue;
-                g_kURLRequestID = llHTTPRequest(g_sEmergencyURL+"attn.txt",[HTTP_METHOD,"GET",HTTP_VERBOSE_THROTTLE,FALSE],"");
-            }
             llMessageLinked(LINK_SET, LM_SETTING_RESPONSE, sStr, "");
         
         }
