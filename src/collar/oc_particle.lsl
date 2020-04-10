@@ -40,8 +40,8 @@ integer DIALOG_TIMEOUT      = -9002;
 integer g_iChan_LOCKMEISTER = -8888;
 integer g_iChan_LOCKGUARD   = -9119;
 integer g_iChan_OCChain = -9889;                   // OpenCollar Chain CMD Channel (for cuff compatibility)
-integer g_iLMListener;
-integer g_iLMListernerDetach;
+//integer g_iLMListener;
+//integer g_iLMListernerDetach;
 
 integer CMD_PARTICLE = 20000;
 
@@ -147,8 +147,7 @@ FindLinkedPrims() {
     for (i=-1; i<=linkcount;++i) {
         string sPrimName = llToLower(llStringTrim(llList2String(llGetLinkPrimitiveParams(i,[PRIM_NAME]),0),STRING_TRIM));
         if (llToLower(sPrimName) == "leashpoint" || llToLower(sPrimName) == "ooc") {
-            llSetLinkPrimitiveParams(i,[PRIM_NAME,"fcollar"]);
-            llOwnerSay("Prim '"+sPrimName+"' renamed to 'fcollar'!");
+            g_lLeashPrims += ["fcollar", i];
             sPrimName = "fcollar";
         }
         integer iIndex = llListFindList(g_lCollarPoints,[sPrimName]);
@@ -160,8 +159,7 @@ FindLinkedPrims() {
     }
     
     if (llListFindList(g_lLeashPrims,["fcollar"]) < 0){
-        llOwnerSay("Warning: There is no leash prim! Please create a invisible Prim in front of the collar and name it 'fcollar'");
-        g_lLeashPrims += ["fcollar",LINK_ROOT];
+        g_lLeashPrims += ["fcollar",LINK_ROOT, "collar", LINK_ROOT, "collarfrontloop", LINK_ROOT];
     }
 }
 
@@ -414,17 +412,24 @@ SetTexture(string sIn, key kIn) {
 
 //Menus
 
+integer bool(integer a){
+    if(a)return TRUE;
+    else return FALSE;
+}
+list g_lCheckboxes=["⬜","⬛"];
+string Checkbox(integer iValue, string sLabel) {
+    return llList2String(g_lCheckboxes, bool(iValue))+" "+sLabel;
+}
+
+
 ConfigureMenu(key kIn, integer iAuth) {
     list lButtons;
-    if (g_iParticleGlow) lButtons += "☑ Shine";
-    else lButtons += "☐ Shine";
-    if (g_iTurnMode) lButtons += "☑ Turn";
-    else lButtons += "☐ Turn";
-    if (g_iStrictMode) lButtons += "☑ Strict";
-    else lButtons += "☐ Strict";
-    if (g_sLeashParticleMode == "Ribbon") lButtons += ["☐ "+L_CLASSIC_TEX,"☒ "+L_RIBBON_TEX,"☐ Invisible"];
-    else if (g_sLeashParticleMode == "noParticle") lButtons += ["☐ "+L_CLASSIC_TEX,"☐ "+L_RIBBON_TEX,"☒ Invisible"];
-    else if (g_sLeashParticleMode == "Classic")  lButtons += ["☒ "+L_CLASSIC_TEX,"☐ "+L_RIBBON_TEX,"☐ Invisible"];
+    lButtons += [Checkbox(g_iParticleGlow, "Shine"), Checkbox(g_iTurnMode, "Turn"), Checkbox(g_iStrictMode, "Strict")];
+    
+    
+    if (g_sLeashParticleMode == "Ribbon") lButtons += [Checkbox(FALSE,L_CLASSIC_TEX),Checkbox(TRUE,L_RIBBON_TEX),Checkbox(FALSE, "Invisible")];
+    else if (g_sLeashParticleMode == "noParticle") lButtons += [Checkbox(FALSE,L_CLASSIC_TEX),Checkbox(FALSE,L_RIBBON_TEX),Checkbox(TRUE,"Invisible")];
+    else if (g_sLeashParticleMode == "Classic")  lButtons += [Checkbox(TRUE,L_CLASSIC_TEX), Checkbox(FALSE, L_RIBBON_TEX), Checkbox(FALSE, "Invisible")];
 
     lButtons += [L_FEEL, L_COLOR];
     string sPrompt = "\n[Leash Configuration]\n\nCustomize the looks and feel of your leash.";
@@ -460,11 +465,11 @@ DebugOutput(key kID, list ITEMS){
 
 HandleOccCMD(string sCMD){
     list lOcCMD = llParseString2List(sCMD, [":"],[]);
-    string sCMD = llList2String(lOcCMD,0);
-    if (sCMD == "occhains") ParseOcChains(llList2String(lOcCMD,1));         // Request keys
-    else if (sCMD == "occhain") doOcChain(llList2String(lOcCMD,1));         // Request Chain
-    else if (sCMD == "clearchain") doClearChain(llList2String(lOcCMD,1));   // Clear Chain
-    else if (sCMD == "chaintex" && g_sOccParticleTexture != llList2Key(lOcCMD,1)) {
+    string sCMDs = llList2String(lOcCMD,0);
+    if (sCMDs == "occhains") ParseOcChains(llList2String(lOcCMD,1));         // Request keys
+    else if (sCMDs == "occhain") doOcChain(llList2String(lOcCMD,1));         // Request Chain
+    else if (sCMDs == "clearchain") doClearChain(llList2String(lOcCMD,1));   // Clear Chain
+    else if (sCMDs == "chaintex" && g_sOccParticleTexture != llList2Key(lOcCMD,1)) {
         g_sOccParticleTexture = llList2Key(lOcCMD,1);
         list lActiveChains = g_lCurrentChains;
         doClearChain("all"); // Restart all Chains so the change can be seen live!
@@ -541,6 +546,7 @@ default {
                 } else  if (sMenu == "configure") {
                     string sButtonType = llGetSubString(sButton,2,-1);
                     string sButtonCheck = llGetSubString(sButton,0,0);
+                    integer toggleMode = llListFindList(g_lCheckboxes, [sButtonCheck]);
                     if (sButton == L_COLOR) {
                         ColorMenu(kAv, iAuth);
                         return;
@@ -548,16 +554,16 @@ default {
                         FeelMenu(kAv, iAuth);
                         return;
                     } else if(sButtonType == L_GLOW) {
-                        if (sButtonCheck == "☐") g_iParticleGlow = TRUE;
+                        if (!toggleMode) g_iParticleGlow = TRUE;
                         else g_iParticleGlow = FALSE;
                         SaveSettings(sButtonType, (string)g_iParticleGlow, TRUE);
                     } else if(sButtonType == L_TURN) {
-                        if (sButtonCheck == "☐") g_iTurnMode = TRUE;
+                        if (!toggleMode) g_iTurnMode = TRUE;
                         else g_iTurnMode = FALSE;
                         if (g_iTurnMode) llMessageLinked(LINK_SET, iAuth, "turn on", kAv);
                         else llMessageLinked(LINK_SET, iAuth, "turn off", kAv);
                     } else if(sButtonType == L_STRICT) {
-                        if (sButtonCheck == "☐") {
+                        if (!toggleMode) {
                             g_iStrictMode = TRUE;
                             g_iStrictRank = iAuth;
                             llMessageLinked(LINK_SET, iAuth, "strict on", kAv);
@@ -567,7 +573,7 @@ default {
                             llMessageLinked(LINK_SET, iAuth, "strict off", kAv);
                         } else llMessageLinked(LINK_SET, NOTIFY,"0%NOACCESS% to changing strict settings",kAv);
                     } else if(sButtonType == L_RIBBON_TEX) {
-                        if (sButtonCheck == "☐") {
+                        if (!toggleMode) {
                             g_sLeashParticleMode = "Ribbon";
                             SetTexture(g_sRibbonTexture, kAv);
                             SaveSettings("R_Texture", g_sRibbonTexture, TRUE);
@@ -578,7 +584,7 @@ default {
                         }
                         SaveSettings("ParticleMode", g_sLeashParticleMode, TRUE);
                     } else if(sButtonType == L_CLASSIC_TEX) {
-                        if (sButtonCheck == "☐") {
+                        if (!toggleMode) {
                             g_sLeashParticleMode = "Classic";
                             SetTexture(g_sClassicTexture, kAv);
                             SaveSettings("C_Texture", g_sClassicTexture, TRUE);
@@ -589,7 +595,7 @@ default {
                         }
                         SaveSettings("ParticleMode", g_sLeashParticleMode, TRUE);
                     } else if(sButtonType == "Invisible") {
-                        if (sButtonCheck == "☐") {
+                        if (!toggleMode) {
                             g_sLeashParticleMode = "noParticle";
                             g_sParticleTexture = "noleash";
                             SetTexture("noleash", kAv);
@@ -671,7 +677,12 @@ default {
                 } else if (sToken == "turn") {
                     g_iTurnMode = (integer)sValue;
                 }
-            } //else if (sToken == "strictAuthError") {
+            } else if(llGetSubString(sToken,0,i) == "global_"){
+                sToken = llGetSubString(sToken,i+1,-1);
+                if(sToken == "checkboxes")g_lCheckboxes = llCSV2List(sValue);
+            }
+                
+                 //else if (sToken == "strictAuthError") {
               //  g_iStrictMode = TRUE;
                 //ConfigureMenu(kMessageID, (integer)sValue);
            // }

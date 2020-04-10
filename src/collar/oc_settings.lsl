@@ -17,8 +17,10 @@ list g_lExceptionTokens = ["texture","glow","shininess","color","intern"];
 key g_kLoadFromWeb;
 key g_kURLLoadRequest;
 key g_kWearer;
+integer g_iNoComma=FALSE; // default is false
 string g_sURL;
 key g_kConfirmLoadDialogID;
+integer g_iInUpdate=FALSE;
 
 integer LINK_CMD_DEBUG= 1999;
 //string g_sSettingToken = "settings_";
@@ -54,7 +56,7 @@ integer LOADPIN = -1904;
 integer g_iRebootConfirmed;
 key g_kConfirmDialogID;
 string g_sSampleURL = "https://goo.gl/SQLFnV";
-string g_sEmergencyURL = "https://raw.githubusercontent.com/OpenCollarTeam/OpenCollar/master/web/";
+//string g_sEmergencyURL = "https://raw.githubusercontent.com/OpenCollarTeam/OpenCollar/master/web/";
 key g_kURLRequestID;
 float g_fLastNewsStamp;
 integer g_iCheckNews;
@@ -96,6 +98,7 @@ list SetSetting(list lCache, string sToken, string sValue) {
 
 string GetSetting(string sToken) {
     integer i = llListFindList(g_lSettings, [sToken]);
+    if(i == -1)return "NOT_FOUND";
     return llList2String(g_lSettings, i + 1);
 }
 
@@ -218,39 +221,53 @@ LoadSetting(string sData, integer iLine) {
             return;
         }
         i = llSubStringIndex(sData, "=");
-        sID = llGetSubString(sData, 0, i - 1);
-        sData = llGetSubString(sData, i + 1, -1);
-        if (~llSubStringIndex(llToLower(sID), "_")) return;
-        else if (~llListFindList(g_lExceptionTokens,[sID])) return;
-        sID = llToLower(sID)+"_";
-        list lData = llParseString2List(sData, ["~"], []);
-        for (i = 0; i < llGetListLength(lData); i += 2) {
-            sToken = llList2String(lData, i);
-            sValue = llList2String(lData, i + 1);
-            if (sValue != "") {
-                if (sID == "auth_") { //if we have auth, can only be the below, else we dont care
-                    sToken = llToLower(sToken);
-                    if (~llListFindList(["block","trust","owner"],[sToken])) {
-                        list lTest = llParseString2List(sValue,[","],[]);
-                        list lOut;
-                        integer n;
-                        do {//sanity check for valid entries
-                            if (llList2Key(lTest,n)) //if this is not a valid key, it's useless
-                                lOut += llList2String(lTest,n);
-                            integer iTest = llGetListLength(lOut);
-                            if (sToken == "owner" &&  iTest == 3)  jump next;
-                            else if (sToken == "trust" &&  iTest == 15)  jump next;
-                            else if (sToken == "block" &&  iTest == 9)  jump next;
-                        } while (++n < llGetListLength(lTest));
-                        @next;
-                        sValue = llDumpList2String(lOut,",");
-                        lTest = [];
-                        lOut = [];
-                    }
+        if(i!=-1){
+            sID = llGetSubString(sData, 0, i - 1);
+            sData = llGetSubString(sData, i + 1, -1);
+            if (~llSubStringIndex(llToLower(sID), "_")) return;
+            else if (~llListFindList(g_lExceptionTokens,[sID])) return;
+            sID = llToLower(sID)+"_";
+            list lData = llParseString2List(sData, ["~"], []);
+            for (i = 0; i < llGetListLength(lData); i += 2) {
+                sToken = llList2String(lData, i);
+                sValue = llList2String(lData, i + 1);
+                if (sValue != "") {
+                    g_lSettings = SetSetting(g_lSettings, sID + sToken, sValue);
+                    
+                    if(llToLower(sID+sToken)=="settings_nocomma") g_iNoComma=(integer)sValue;
                 }
-                if (sValue) g_lSettings = SetSetting(g_lSettings, sID + sToken, sValue);
+            }
+        } else {
+            i=llSubStringIndex(sData,"+");
+            sID = llGetSubString(sData,0,i-1);
+            sData = llGetSubString(sData,i+1,-1);
+            
+            if(~llSubStringIndex(llToLower(sID),"_"))return;
+            else if(~llListFindList(g_lExceptionTokens,[sID]))return;
+            sID = llToLower(sID)+"_";
+            list lData = llParseString2List(sData, ["~"],[]);
+            for(i=0;i<llGetListLength(lData);i+=2){
+                sToken= llList2String(lData,i);
+                sValue = llList2String(lData,i+1);
+                if(sValue!=""){
+                    string sPreExistingValue = GetSetting(sID+sToken);
+                    if(sPreExistingValue!="NOT_FOUND"){
+                        if(llSubStringIndex(sPreExistingValue, sValue)==-1){
+                            if(!g_iNoComma)
+                                sPreExistingValue+=","+sValue;
+                            else
+                                sPreExistingValue+=sValue;
+                        }
+                    }
+                    else{
+                        sPreExistingValue=sValue;
+                    }
+                    g_lSettings = SetSetting(g_lSettings,sID+sToken,sPreExistingValue);
+                }
             }
         }
+            
+        
     }
 }
 
@@ -313,14 +330,66 @@ UserCommand(integer iAuth, string sStr, key kID) {
 
 
 
+ExtractPart(){
+    g_sScriptPart = llList2String(llParseString2List(llGetScriptName(), ["_"],[]),1);
+}
+
+string g_sScriptPart; // oc_<part>
+integer INDICATOR_THIS;
+SearchIndicators(){
+    ExtractPart();
+    
+    integer i=0;
+    integer end = llGetNumberOfPrims();
+    for(i=0;i<end;i++){
+        list Params = llParseStringKeepNulls(llList2String(llGetLinkPrimitiveParams(i,[PRIM_DESC]),0), ["~"],[]);
+        
+        if(llListFindList(Params, ["indicator_"+g_sScriptPart])!=-1){
+            INDICATOR_THIS = i;
+            return;
+        }
+    }
+    
+    
+}
+Indicator(integer iMode){
+    if(INDICATOR_THIS==-1)return;
+    if(iMode){
+        llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,TRUE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_NONE,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.4]);
+        llSetTimerEvent(1);
+    }else
+        llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,FALSE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_HIGH,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.0]);
+}
+
 default {
     state_entry() {
-        if (llGetStartParameter()!=0){
-            state inUpdate;
-        }
-        
         // remove the intern_dist setting
         // Ensure that settings resets AFTER every other script, so that they don't reset after they get settings
+        SearchIndicators();
+        if(llGetStartParameter() != 0) g_iInUpdate=TRUE; // do NOT spam linked messages
+        
+        if(g_iInUpdate && llGetLinkNumber()!= LINK_ROOT && llGetLinkNumber() != 0){
+            
+            list Parameters = llParseStringKeepNulls(llList2String(llGetLinkPrimitiveParams(llGetLinkNumber(), [PRIM_DESC]),0), ["~"],[]);
+            ExtractPart();
+            Parameters += "indicator_"+g_sScriptPart;
+            llSetLinkPrimitiveParams(llGetLinkNumber(), [PRIM_DESC, llDumpList2String(Parameters,"~")]);
+                
+        }
+        
+        if(g_iInUpdate && llGetLinkNumber()!=LINK_ROOT  &&  llGetLinkNumber() != 0){
+            llOwnerSay("Moved oc_settings");
+            if(llGetInventoryType(".settings")==INVENTORY_NOTECARD){
+                key sendTo = llGetLinkKey(LINK_ROOT);
+                llGiveInventory(sendTo, ".settings");
+            }
+            
+            llSleep(1);
+            llRemoveInventory(llGetScriptName());
+            return;
+        }
+        
+        
         llSleep(0.5);
         g_kWearer = llGetOwner();
         g_iLineNr = 0;
@@ -331,15 +400,18 @@ default {
              g_kCardID = llGetInventoryKey(g_sCard);
             } else if (g_lSettings) llMessageLinked(LINK_SET, LM_SETTING_RESPONSE, llDumpList2String(g_lSettings, "="), "");
         }
+        
+        
+       /// llSay(0, "debug: settings was reset");
     }
 
     on_rez(integer iParam) {
         if (g_kWearer == llGetOwner()) {
-            g_iCheckNews = TRUE;
-            llSetTimerEvent(2.0);
+            g_iInUpdate=FALSE;
+            llSetTimerEvent(10.0);
             //llSleep(0.5); // brief wait for others to reset
             //llMessageLinked(LINK_SET,LINK_UPDATE,"LINK_SET","");
-            //SendValues();
+            SendValues();
         } else llResetScript();
     }
 
@@ -395,20 +467,18 @@ default {
     link_message(integer iSender, integer iNum, string sStr, key kID) {
         if (iNum == CMD_OWNER || iNum == CMD_WEARER) UserCommand(iNum, sStr, kID);
         else if (iNum == LM_SETTING_SAVE) {
+            Indicator(TRUE);
             //save the token, value
             list lParams = llParseString2List(sStr, ["="], []);
             string sToken = llList2String(lParams, 0);
             string sValue = llList2String(lParams, 1);
             g_lSettings = SetSetting(g_lSettings, sToken, sValue);
-            if (sToken == "intern_news") {
-                g_fLastNewsStamp = (float)sValue;
-                g_kURLRequestID = llHTTPRequest(g_sEmergencyURL+"attn.txt",[HTTP_METHOD,"GET",HTTP_VERBOSE_THROTTLE,FALSE],"");
-            }
             llMessageLinked(LINK_SET, LM_SETTING_RESPONSE, sStr, "");
         
         }
         else if (iNum == LM_SETTING_REQUEST) {
              //check the cache for the token
+             Indicator(TRUE);
             if (SettingExists(sStr)) llMessageLinked(LINK_SET, LM_SETTING_RESPONSE, sStr + "=" + GetSetting(sStr), "");
             else if (sStr == "ALL") {
                 g_iCheckNews = FALSE;
@@ -418,6 +488,7 @@ default {
         else if (iNum == LM_SETTING_DELETE){
             //llMessageLinked(LINK_SET, LM_SETTING_DELETE,sStr,"");
             DelSetting(sStr);
+            Indicator(TRUE);
         } else if(iNum == LM_SETTING_RELAY_CONTENT) LoadSetting(sStr, (integer)((string)kID));
         else if (iNum == DIALOG_RESPONSE && kID == g_kConfirmDialogID) {
             list lMenuParams = llParseString2List(sStr, ["|"], []);
@@ -447,13 +518,19 @@ default {
             llInstantMessage(kID, llGetScriptName() +" lSettings length: "+(string)llGetListLength(g_lSettings));
 
             PrintSettings(kID, "");
+        } else if(iNum == -99999){
+            if(sStr == "update_active"){
+                g_iInUpdate=TRUE;
+            }
+        } else if(iNum == REBOOT){
+            g_iInUpdate=FALSE;
         }
     }
 
     timer() {
         llSetTimerEvent(0.0);
         SendValues();
-        if (g_iCheckNews) g_kURLRequestID = llHTTPRequest(g_sEmergencyURL+"attn.txt",[HTTP_METHOD,"GET",HTTP_VERBOSE_THROTTLE,FALSE],"");
+        Indicator(FALSE);
     }
 
     changed(integer iChange) {
@@ -468,36 +545,8 @@ default {
                 }
             } else {
                 llSetTimerEvent(1.0);   //pause, then send values if inventory changes, in case script was edited and needs its settings again
-                SendValues();
-            }
-        }
-    }
-}
-
-state inUpdate{
-    link_message(integer iSender, integer iNum, string sMsg, key kID){
-        if(iNum == REBOOT)llResetScript();
-        else if(iNum == 0){
-            if(sMsg == "do_move"){
-                
-                if(llGetLinkNumber()==LINK_SET)return;
-                
-                llOwnerSay("Moving "+llGetScriptName()+"!");
-                integer i=0;
-                integer end=llGetInventoryNumber(INVENTORY_ALL);
-                for(i=0;i<end;i++){
-                    string item = llGetInventoryName(INVENTORY_ALL,i);
-                    if(llGetInventoryType(item)==INVENTORY_SCRIPT && item!=llGetScriptName()){
-                        llRemoveInventory(item);
-                    }else if(llGetInventoryType(item)!=INVENTORY_SCRIPT){
-                        llGiveInventory(kID, item);
-                        llRemoveInventory(item);
-                        i=-1;
-                        end=llGetInventoryNumber(INVENTORY_ALL);
-                    }
-                }
-                
-                llRemoveInventory(llGetScriptName());
+                if(!g_iInUpdate)
+                    SendValues();
             }
         }
     }

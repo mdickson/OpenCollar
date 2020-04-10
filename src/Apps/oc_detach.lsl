@@ -1,25 +1,43 @@
+  
 /*
-THIS FILE IS HEREBY RELEASED UNDER THE Public Domain
-This script is released public domain, unlike other OC scripts for a specific and limited reason, because we want to encourage third party plugin creators to create for OpenCollar and use whatever permissions on their own work they see fit.  No portion of OpenCollar derived code may be used excepting this script,  without the accompanying GPLv2 license.
--Authors Attribution-
-Aria (tiff589) - (July 2018-December 2019)
-roan (Silkie Sabra) - (September 2018)
+This file is a part of OpenCollar.
+Copyright ©2019
+
+: Contributors :
+
+Aria (Tashia Redrose)
+    * Dec 2019      - Rewrote Outfits & Reset Script Version to 1.0
+    
+    
+et al.
+
+Licensed under the GPLv2. See LICENSE for full details.
+
+https://github.com/OpenCollarTeam/OpenCollar
 */
 
-
 string g_sParentMenu = "Apps";
-string g_sSubMenu = "AMenu";
-
+string g_sSubMenu = "Detach";
+/*
+integer bool(integer a){
+    if(a)return TRUE;
+    else return FALSE;
+}
+list g_lCheckboxes=["⬜","⬛"];
+string Checkbox(integer iValue, string sLabel) {
+    return llList2String(g_lCheckboxes, bool(iValue))+" "+sLabel;
+}
+*/
 
 //MESSAGE MAP
 //integer CMD_ZERO = 0;
 integer CMD_OWNER = 500;
 integer CMD_TRUSTED = 501;
-//integer CMD_GROUP = 502;
+integer CMD_GROUP = 502;
 integer CMD_WEARER = 503;
-//integer CMD_EVERYONE = 504;
+integer CMD_EVERYONE = 504;
 integer CMD_RLV_RELAY = 507;
-//integer CMD_SAFEWORD = 510;
+integer CMD_SAFEWORD = 510;
 integer CMD_RELAY_SAFEWORD = 511;
 
 integer NOTIFY = 1002;
@@ -57,19 +75,18 @@ Dialog(key kID, string sPrompt, list lChoices, list lUtilityButtons, integer iPa
     else g_lMenuIDs += [kID, kMenuID, sName];
 }
 
+
+
 Menu(key kID, integer iAuth) {
-    string sPrompt = "\n[Menu App]";
-    list lButtons = ["A Button"];
-    Dialog(kID, sPrompt, lButtons, [UPMENU], 0, iAuth, "Menu~Main");
+    string sPrompt = "\n[Detach App]";
+    
+    Dialog(kID, sPrompt, llGetAttachedList(llGetOwner()),  [UPMENU], 0, iAuth, "Menu~Main");
 }
 
 UserCommand(integer iNum, string sStr, key kID) {
     if (iNum<CMD_OWNER || iNum>CMD_WEARER) return;
     if (llSubStringIndex(sStr,llToLower(g_sSubMenu)) && sStr != "menu "+g_sSubMenu) return;
-    if (iNum == CMD_OWNER && sStr == "runaway") {
-        g_lOwner = g_lTrust = g_lBlock = [];
-        return;
-    }
+    
     if (sStr==g_sSubMenu || sStr == "menu "+g_sSubMenu) Menu(kID, iNum);
     //else if (iNum!=CMD_OWNER && iNum!=CMD_TRUSTED && kID!=g_kWearer) RelayNotify(kID,"Access denied!",0);
     else {
@@ -84,9 +101,6 @@ UserCommand(integer iNum, string sStr, key kID) {
 key g_kWearer;
 list g_lMenuIDs;
 integer g_iMenuStride;
-list g_lOwner;
-list g_lTrust;
-list g_lBlock;
 integer g_iLocked=FALSE;
 default
 {
@@ -95,9 +109,16 @@ default
     }
     state_entry()
     {
+        //llScriptProfiler(TRUE);
         g_kWearer = llGetOwner();
-        llMessageLinked(LINK_SET, LM_SETTING_REQUEST, "global_locked","");
+        //float baseCalc = llPow(2, 0);
+        //llSay(0, "Pow 2^0 : "+(string)baseCalc);
+        //llSetTimerEvent(1);
     }
+/*    timer(){
+        llSetText("Free Memory (oc_detach)\n"+(string)llGetFreeMemory()+"\n \n \n \n \n \n \n \n \n \n \n \n", <0,1,1>,1);
+    }
+*/    
     link_message(integer iSender,integer iNum,string sStr,key kID){
         if(iNum >= CMD_OWNER && iNum <= CMD_WEARER) UserCommand(iNum, sStr, kID);
         else if(iNum == MENUNAME_REQUEST && sStr == g_sParentMenu)
@@ -114,22 +135,19 @@ default
                 
                 if(sMenu == "Menu~Main"){
                     if(sMsg == UPMENU) llMessageLinked(LINK_SET, iAuth, "menu "+g_sParentMenu, kAv);
-                    else if(sMsg == "A Button") llSay(0, "This is a example plugin.");
+                    else{
+                        // remove attachment
+                        llOwnerSay("@remattach:"+sMsg+"=force");
+                        Menu(kAv,iAuth);
+                    }
                 }
             }
         } else if(iNum == LM_SETTING_RESPONSE){
             // Detect here the Settings
             list lSettings = llParseString2List(sStr, ["_","="],[]);
-            if(llList2String(lSettings,0)=="global"){
-                if(llList2String(lSettings,1)=="locked"){
-                    g_iLocked=llList2Integer(lSettings,2);
-                }
-            }
         } else if(iNum == LM_SETTING_DELETE){
             // This is recieved back from settings when a setting is deleted
             list lSettings = llParseString2List(sStr, ["_"],[]);
-            if(llList2String(lSettings,0)=="global")
-                if(llList2String(lSettings,1) == "locked") g_iLocked=FALSE;
         }
         //llOwnerSay(llDumpList2String([iSender,iNum,sStr,kID],"^"));
     }

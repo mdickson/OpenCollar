@@ -103,6 +103,15 @@ Debug(string sStr) {
     llOwnerSay(llGetScriptName() + "(min free:"+(string)(llGetMemoryLimit()-llGetSPMaxMemory())+")["+(string)llGetFreeMemory()+"] :\n" + sStr);
 }*/
 
+integer bool(integer a){
+    if(a)return TRUE;
+    else return FALSE;
+}
+list g_lCheckboxes=["⬜","⬛"];
+string Checkbox(integer iValue, string sLabel) {
+    return llList2String(g_lCheckboxes, bool(iValue))+" "+sLabel;
+}
+
 string NameURI(string sID){
     return "secondlife:///app/agent/"+sID+"/about";
 }
@@ -130,10 +139,8 @@ AuthMenu(key kAv, integer iAuth) {
     string sPrompt = "\n[Access & Authorization]";
     list lButtons = ["+ Owner", "+ Trust", "+ Block", "− Owner", "− Trust", "− Block"];
 
-    if (g_kGroup=="") lButtons += ["Group ☐"];    //set group
-    else lButtons += ["Group ☑"];    //unset group
-    if (g_iOpenAccess) lButtons += ["Public ☑"];    //set open access
-    else lButtons += ["Public ☐"];    //unset open access
+    lButtons += Checkbox(bool((g_kGroup!="")), "Group");
+    lButtons += Checkbox(g_iOpenAccess, "Public");
 
     lButtons += ["Runaway","Access List"];
     Dialog(kAv, sPrompt, lButtons, [UPMENU], 0, iAuth, "Auth",FALSE);
@@ -391,18 +398,23 @@ integer Auth(string sObjID) {
         iNum = CMD_TRUSTED;
     else if (sID == g_sWearerID)
         iNum = CMD_WEARER;
-    else if (g_iOpenAccess)
-        if(in_range((key)sID))
+    else if (g_iOpenAccess){
+        if(in_range(sID))
             iNum = CMD_EVERYONE;
-        else
-            iNum = CMD_NOACCESS;
+        else iNum = CMD_NOACCESS;
+    }
     else if (g_iGroupEnabled && (string)llGetObjectDetails((key)sObjID, [OBJECT_GROUP]) == (string)g_kGroup && (key)sID != g_sWearerID)  //meaning that the command came from an object set to our control group, and is not owned by the wearer
-        if(in_range((key)sID))
+    {
+        if(in_range(sObjID))
             iNum = CMD_GROUP;
         else
             iNum = CMD_NOACCESS;
+    }
     else if (llSameGroup(sID) && g_iGroupEnabled && sID != g_sWearerID) {
-        iNum = CMD_GROUP;
+        if(in_range(sID))
+            iNum = CMD_GROUP;
+        else
+            iNum = CMD_NOACCESS;
     } else
         iNum = CMD_NOACCESS;
     //Debug("Authed as "+(string)iNum);
@@ -488,7 +500,8 @@ UserCommand(integer iNum, string sStr, key kID, integer iRemenu) { // here iNum:
         } else {
             string sTmpID2 = llList2String(lParams,3);
             if(sTmpID2 != ""){
-                g_lRequests = [llHTTPRequest("http://w-hat.com/name2key/"+sTmpID+"."+sTmpID2,[],""), sCommand, sAction, kID];
+                g_lRequests = [llRequestUserKey(sTmpID+" "+sTmpID2), sCommand, sAction, kID];
+                //llHTTPRequest("http://w-hat.com/name2key/"+sTmpID+"."+sTmpID2,[],""), sCommand, sAction, kID];
             } else
                 Dialog(kID, "\nChoose who to add to the "+sAction+" list:\n",[sTmpID],[">Wearer<",UPMENU],0,iNum,"AddAvi"+sAction, TRUE);
         }
@@ -601,11 +614,50 @@ RunAway() {
     llResetScript();
 }
 list g_lRequests;
+
+
+
+ExtractPart(){
+    g_sScriptPart = llList2String(llParseString2List(llGetScriptName(), ["_"],[]),1);
+}
+
+string g_sScriptPart; // oc_<part>
+integer INDICATOR_THIS;
+SearchIndicators(){
+    ExtractPart();
+    
+    integer i=0;
+    integer end = llGetNumberOfPrims();
+    for(i=0;i<end;i++){
+        list Params = llParseStringKeepNulls(llList2String(llGetLinkPrimitiveParams(i,[PRIM_DESC]),0), ["~"],[]);
+        
+        if(llListFindList(Params, ["indicator_"+g_sScriptPart])!=-1){
+            INDICATOR_THIS = i;
+            return;
+        }
+    }
+    
+    
+}
+Indicator(integer iMode){
+    if(INDICATOR_THIS==-1)return;
+    if(iMode)
+        llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,TRUE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_NONE,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.4]);
+    else
+        llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,FALSE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_HIGH,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.0]);
+}
+
+
 default {
     on_rez(integer iParam) {
         llResetScript();
     }
 
+    timer(){
+        Indicator(FALSE);
+        llSetTimerEvent(0);
+    }
+    
     state_entry() {
         if (llGetStartParameter()!=0){
             state inUpdate;
@@ -617,12 +669,14 @@ default {
            // Debug("profiling restarted");
         }*/
         //llSetMemoryLimit(65536);
+        SearchIndicators();
         g_sWearerID = llGetOwner();
     }
 
     link_message(integer iSender, integer iNum, string sStr, key kID) {
         
         if (iNum == CMD_ZERO) { //authenticate messages on CMD_ZERO
+            Indicator(TRUE);
             llSetTimerEvent(0.22);
             integer iAuth = Auth(kID);
             if ( kID == g_sWearerID && sStr == "runaway") {   // note that this will work *even* if the wearer is blacklisted or locked out
@@ -674,6 +728,10 @@ default {
                     if(Flag&4)
                         g_iCaptureIsActive=TRUE;
                 }
+            } else if(llToLower(llGetSubString(sToken,0,i)) == "global_"){
+                if(llGetSubString(sToken,i+1,-1) == "checkboxes"){
+                    g_lCheckboxes=llCSV2List(sValue);
+                }
             }
         } else if (iNum == RLV_REFRESH || iNum == RLV_CLEAR){
             if (g_iGroupEnabled) llMessageLinked(LINK_SET, RLV_CMD, "setgroup=n", "auth"); // This restriction should be active as long as group access is active!
@@ -688,11 +746,13 @@ default {
                 }
             }
         } else if (iNum == AUTH_REQUEST) {//The reply is: "AuthReply|UUID|iAuth" we rerute this to com to have the same prim ID 
+            Indicator(TRUE);
             llSetTimerEvent(0.22);
             llMessageLinked(iSender,AUTH_REPLY, "AuthReply|"+(string)kID+"|"+(string)Auth(kID), llGetSubString(sStr,0,35));
         } else if (iNum == DIALOG_RESPONSE) {
             integer iMenuIndex = llListFindList(g_lMenuIDs, [kID]);
             if (~iMenuIndex) {
+                Indicator(TRUE);
                 llSetTimerEvent(0.22);
                 list lMenuParams = llParseString2List(sStr, ["|"], []);
                 key kAv = (key)llList2String(lMenuParams, 0);
@@ -713,10 +773,10 @@ default {
                             "− Owner","rm owner",
                             "− Trust","rm trust",
                             "− Block","rm block",
-                            "Group ☐","group on",
-                            "Group ☑","group off",
-                            "Public ☐","public on",
-                            "Public ☑","public off",
+                            Checkbox(FALSE,"Group"),"group on",
+                            Checkbox(TRUE,"Group"),"group off",
+                            Checkbox(FALSE,"Public"),"public on",
+                            Checkbox(TRUE, "Public"),"public off",
                             "Access List","list",
                             "Runaway","runaway"
                           ];
@@ -793,13 +853,13 @@ default {
 */
     }
 
-    http_response(key kRequest, integer iStatus, list lMeta, string sBody){
-        integer iPos = llListFindList(g_lRequests,[kRequest]);
+    dataserver(key kReq, string sData){
+        integer iPos = llListFindList(g_lRequests,[kReq]);
         if(iPos!=-1){
             if(llList2String(g_lRequests,iPos+1)=="add")
-                AddUniquePerson((key)sBody, llList2String(g_lRequests,iPos+2), (key)llList2String(g_lRequests,iPos+3));
+                AddUniquePerson((key)sData, llList2String(g_lRequests,iPos+2), (key)llList2String(g_lRequests,iPos+3));
             else
-                RemovePerson((key)sBody, llList2String(g_lRequests,iPos+2), (key)llList2String(g_lRequests,iPos+3), FALSE);
+                RemovePerson((key)sData, llList2String(g_lRequests,iPos+2), (key)llList2String(g_lRequests,iPos+3), FALSE);
             
             g_lRequests=llDeleteSubList(g_lRequests, iPos,iPos+3);
         }
@@ -812,7 +872,12 @@ state inUpdate{
         else if(iNum == 0){
             if(sMsg == "do_move"){
                 
-                if(llGetLinkNumber()==LINK_SET)return;
+                if(llGetLinkNumber()==LINK_ROOT || llGetLinkNumber() == 0)return;
+                
+                list Parameters = llParseStringKeepNulls(llList2String(llGetLinkPrimitiveParams(llGetLinkNumber(), [PRIM_DESC]),0), ["~"],[]);
+                ExtractPart();
+                Parameters += "indicator_"+g_sScriptPart;
+                llSetLinkPrimitiveParams(llGetLinkNumber(), [PRIM_DESC, llDumpList2String(Parameters,"~")]);
                 
                 llOwnerSay("Moving oc_auth!");
                 integer i=0;

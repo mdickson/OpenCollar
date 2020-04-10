@@ -24,11 +24,15 @@ list g_lCore5Scripts = ["oc_auth","oc_dialog","oc_rlvsys","oc_settings","oc_anim
 // list where we'll record all the settings and local settings we're sent, for replay later.
 // they're stored as strings, in form "<cmd>|<data>", where cmd is either LM_SETTING_SAVE
 list g_lSettings;
-
+integer g_iIgnoreSent=FALSE;
 integer g_iIsUpdate;
 
 // list of deprecated tokens to remove from previous collar scripts
-list g_lDeprecatedSettingTokens = ["collarversion","global_integrity","intern_hovers","intern_standhover","leashpoint","auth_groupname"];
+list g_lDeprecatedSettingTokens = ["collarversion","global_integrity","intern_hovers","intern_standhover","leashpoint","auth_groupname",
+"rlvsuite_mask1", "rlvsuite_mask2",
+ "rlvsuite_auths" //< - Auths was a token in 7.4 betas which allowed setting access to specific restrictions, but it proved to push us over the memory limit. This may be readded in the future under a different script, and different token name.
+ 
+ ];
 
 integer CMD_OWNER = 500;
 
@@ -78,7 +82,7 @@ Check4Core5Script() {
         sScriptName = llGetInventoryName(INVENTORY_SCRIPT,i);
         integer index = llListFindList(g_lCore5Scripts,[sScriptName]);
         if (~index) {
-            llMessageLinked(LINK_SET,LOADPIN,sScriptName,"");
+            llMessageLinked(LINK_ALL_OTHERS,LOADPIN,sScriptName,"");
             g_lCore5Scripts = llDeleteSubList(g_lCore5Scripts,index,index);
             return;
         }
@@ -109,29 +113,30 @@ PermsCheck() {
 default {
     state_entry() {
         PermsCheck();
+        
         g_iStartParam = llGetStartParameter();
         if (g_iStartParam < 0 ){
             g_iIsUpdate = TRUE;
         }
+        
+        llOwnerSay("Update will start shortly. Checking for existing settings");
         // build script list
         integer i = llGetInventoryNumber(INVENTORY_SCRIPT);
         string sName;
-        do { i--;
-            sName = llGetInventoryName(INVENTORY_SCRIPT,i);
-            if (~llListFindList(g_lCore5Scripts,[sName])) {
-                if (llGetInventoryType(sName) == INVENTORY_SCRIPT)
-                    llRemoveInventory(sName);
-            } else g_lScripts += sName;
-        } while (i);
+        integer TotalScriptsFound=i;
         // listen on the start param channel
         llListen(g_iStartParam, "", "", "");
         // let mama know we're ready
         //llWhisper(g_iStartParam, "reallyready");
-        llSleep(5); // settle for a moment: oc_settings will not be ready right away to handle our request
-        llMessageLinked(LINK_SET, LM_SETTING_REQUEST, "ALL", "");
-        llResetTime();
-        llSetTimerEvent(1); // Timeout the settings request in 30 seconds
-        
+        if(TotalScriptsFound>2){
+            llSleep(5); // settle for a moment: oc_settings will not be ready right away to handle our request
+            llMessageLinked(LINK_SET, LM_SETTING_REQUEST, "ALL", "");
+            llResetTime();
+            llSetTimerEvent(1); // Timeout the settings request in 30 seconds
+        }else{
+            llOwnerSay("No existing settings found. Starting install");
+            llWhisper(g_iStartParam,"reallyready");
+        }
     }
 
     listen(integer iChannel, string sWho, key kID, string sMsg) {
@@ -283,6 +288,8 @@ default {
                     g_lSettings += [sStr];
                 }
             }else{
+                if(g_iIgnoreSent)return;
+                g_iIgnoreSent=TRUE;
                 llOwnerSay("Got Settings! Starting Update");
                 llSetTimerEvent(0);
                 llWhisper(g_iStartParam, "reallyready");
@@ -307,7 +314,9 @@ default {
     timer(){
         if(llGetTime()>30){
             llSetTimerEvent(0);
+            llMessageLinked(LINK_SET, -99999, "update_active", "");
             llOwnerSay("Starting Update");
+            g_iIgnoreSent=TRUE;
             llWhisper(g_iStartParam,"reallyready");
         } else if(llGetTime()>5 && llGetTime()<6.9){
             llOwnerSay("* oc_settings has not yet sent us settings! Retry (Count:1)");
