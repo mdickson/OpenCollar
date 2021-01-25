@@ -4,7 +4,7 @@
 // Sumi Perl et al.
 // Licensed under the GPLv2.  See LICENSE for full details.
 
-string g_sScriptVersion = "7.4";
+string g_sScriptVersion = "8.0";
 integer g_iRLVOn = TRUE;
 integer g_iRLVOff = FALSE;
 integer g_iViewerCheck = FALSE;
@@ -43,12 +43,12 @@ integer CMD_RELAY_SAFEWORD = 511;
 //integer POPUP_HELP = 1001;
 integer NOTIFY = 1002;
 integer REBOOT = -1000;
-integer LOADPIN = -1904;
+//integer LOADPIN = -1904;
 integer LM_SETTING_SAVE = 2000;
 integer LM_SETTING_REQUEST = 2001;
 integer LM_SETTING_RESPONSE = 2002;
-//integer LM_SETTING_DELETE = 2003;
-//integer LM_SETTING_EMPTY = 2004;
+integer LM_SETTING_DELETE = 2003;
+integer LM_SETTING_EMPTY = 2004;
 
 integer MENUNAME_REQUEST = 3000;
 integer MENUNAME_RESPONSE = 3001;
@@ -56,6 +56,7 @@ integer MENUNAME_REMOVE = 3003;
 
 integer RLV_CMD = 6000;
 integer RLV_REFRESH = 6001;//RLV plugins should reinstate their restrictions upon receiving this message.
+integer DO_RLV_REFRESH = 26001;//RLV plugins should reinstate their restrictions upon receiving this message.
 integer RLV_CLEAR = 6002;//RLV plugins should clear their restriction lists upon receiving this message.
 integer RLV_VERSION = 6003; //RLV Plugins can recieve the used RLV viewer version upon receiving this message..
 integer RLVA_VERSION = 6004; //RLV Plugins can recieve the used RLVa viewer version upon receiving this message..
@@ -75,9 +76,14 @@ string TURNOFF = " OFF";
 string CLEAR = "CLEAR ALL";
 
 key g_kWearer;
+//integer TIMEOUT_READY = 30497;
+integer TIMEOUT_REGISTER = 30498;
+integer TIMEOUT_FIRED = 30499;
+//list g_lSettingsReqs = [];
+
 
 string g_sSettingToken = "rlvsys_";
-string g_sGlobalToken = "global_";
+//string g_sGlobalToken = "global_";
 string g_sRlvVersionString="(unknown)";
 string g_sRlvaVersionString="(unknown)";
 
@@ -327,38 +333,38 @@ UserCommand(integer iNum, string sStr, key kID) {
         llMessageLinked(LINK_SET,NOTIFY,"0"+sOut,kID);
     }
 }
-ExtractPart(){
+/*ExtractPart(){
     g_sScriptPart = llList2String(llParseString2List(llGetScriptName(), ["_"],[]),1);
-}
+}*/
 
-string g_sScriptPart; // oc_<part>
-integer INDICATOR_THIS;
-SearchIndicators(){
-    ExtractPart();
-    
-    integer i=0;
-    integer end = llGetNumberOfPrims();
-    for(i=0;i<end;i++){
-        list Params = llParseStringKeepNulls(llList2String(llGetLinkPrimitiveParams(i,[PRIM_DESC]),0), ["~"],[]);
-        
-        if(llListFindList(Params, ["indicator_"+g_sScriptPart])!=-1){
-            INDICATOR_THIS = i;
-            return;
+//string g_sScriptPart; // oc_<part>
+
+integer ALIVE = -55;
+integer READY = -56;
+integer STARTUP = -57;
+default
+{
+    on_rez(integer iNum){
+        llResetScript();
+    }
+    state_entry(){
+        if(llGetStartParameter()!=0)state inUpdate;
+        llMessageLinked(LINK_SET, ALIVE, llGetScriptName(),"");
+    }
+    link_message(integer iSender, integer iNum, string sStr, key kID){
+        if(iNum == REBOOT){
+            if(sStr == "reboot"){
+                llResetScript();
+            }
+        } else if(iNum == READY){
+            llMessageLinked(LINK_SET, ALIVE, llGetScriptName(), "");
+        } else if(iNum == STARTUP){
+            state active;
         }
     }
-    
-    
 }
-Indicator(integer iMode){
-    if(INDICATOR_THIS==-1)return;
-    if(iMode)
-        llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,TRUE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_NONE,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.4]);
-    else
-        llSetLinkPrimitiveParamsFast(INDICATOR_THIS,[PRIM_FULLBRIGHT,ALL_SIDES,FALSE,PRIM_BUMP_SHINY,ALL_SIDES,PRIM_SHINY_HIGH,PRIM_BUMP_NONE,PRIM_GLOW,ALL_SIDES,0.0]);
-}
-
-
-default {
+state active
+{
     on_rez(integer param) {
 /*
         if (g_iProfiled){
@@ -366,27 +372,30 @@ default {
             Debug("profiling restarted");
         }
 */
+        /*
         g_iRlvActive=FALSE;
         g_iViewerCheck=FALSE;
         g_iRLVOn=TRUE;
         g_lBaked=[];    //just been rezzed, so should have no baked restrictions
-        
+        */
         // Begin to detect RLV
         llOwnerSay("@clear");
-        setRlvState();
+        //setRlvState();
+        llResetScript();
     }
 
     state_entry() {
         if (llGetStartParameter()!=0) {
-            state inUpdate;
+            llResetScript();
         }
         //llSetMemoryLimit(65536);  //2015-05-16 (script needs memory for processing)
         setRlvState();
-        SearchIndicators();
         //llMessageLinked(LINK_SET, LM_SETTING_SAVE, g_sSettingToken + "on="+(string)g_iRLVOn, "");
         //llMessageLinked(LINK_SET, LM_SETTING_SAVE, g_sSettingToken + "on="+(string)g_iRLVOn, "");
         llOwnerSay("@clear");
         g_kWearer = llGetOwner();
+        
+        llMessageLinked(LINK_SET, LM_SETTING_REQUEST, "ALL","");
         //Debug("Starting");
     }
 
@@ -433,8 +442,6 @@ default {
             //Debug(sStr);
             integer iMenuIndex = llListFindList(g_lMenuIDs, [kID]);
             if (~iMenuIndex) {
-                Indicator(TRUE);
-                llSensorRepeat("N0thin9","abc",ACTIVE,0.1,0.1,0.22);
                 list lMenuParams = llParseString2List(sStr, ["|"], []);
                 key kAv = (key)llList2String(lMenuParams, 0);
                 string sMsg = llList2String(lMenuParams, 1);
@@ -446,6 +453,7 @@ default {
                 if (sMenu == g_sSubMenu) {
                     if (sMsg == TURNON) {
                         UserCommand(iAuth, "rlv on", kAv);
+                        DoMenu(kAv, iAuth);
                     } else if (sMsg == TURNOFF) {
                         UserCommand(iAuth, "rlv off", kAv);
                         DoMenu(kAv, iAuth);
@@ -468,18 +476,47 @@ default {
                 llMessageLinked(LINK_SET, RLV_ON, "", NULL_KEY);
                 if (g_iRlvaVersion) llMessageLinked(LINK_SET, RLVA_VERSION, (string) g_iRlvaVersion, NULL_KEY);
             }
+        } else if(iNum == TIMEOUT_FIRED)
+        {
+            
+            if(sStr == "recheck_lock"){
+                if(!g_iCollarLocked){
+                    llOwnerSay("@detach=y");
+                }
+            }
+        
+        }else if(iNum == LM_SETTING_EMPTY){
+            
+            //integer ind = llListFindList(g_lSettingsReqs, [sStr]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
+            
+        } else if(iNum == LM_SETTING_DELETE){
+            
+            //integer ind = llListFindList(g_lSettingsReqs, [sStr]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
+            
         } else if (iNum == LM_SETTING_RESPONSE) {
-            list lParams = llParseString2List(sStr, ["="], []);
+            list lParams = llParseString2List(sStr, ["_","="], []);
             string sToken = llList2String(lParams, 0);
-            string sValue = llList2String(lParams, 1);
+            string sVar = llList2String(lParams,1);
+            string sValue = llList2String(lParams, 2);
+            
+            //integer ind = llListFindList(g_lSettingsReqs, [sToken+"_"+sVar]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
+            
+            
             lParams=[];
-            if (sToken == "auth_owner") g_lOwners = llParseString2List(sValue, [","], []);
-            else if (sToken==g_sGlobalToken+"lock") g_iCollarLocked=(integer)sValue;
-            else if (sToken==g_sSettingToken+"handshakes") g_iMaxViewerChecks=(integer)sValue;
-            else if (sToken==g_sSettingToken+"on") {
-                g_iRLVOn=(integer)sValue;
-                g_iRLVOff = !g_iRLVOn;
-                setRlvState();
+            if (sToken+"_"+sVar == "auth_owner") g_lOwners = llParseString2List(sValue, [","], []);
+            else if(sToken == "global"){
+                if(sVar == "locked") g_iCollarLocked=(integer)sValue;
+                else if (sVar=="handshakes") g_iMaxViewerChecks=(integer)sValue;
+            }
+            else if (sToken=="rlvsys"){
+                if(sVar == "on") {
+                    g_iRLVOn=(integer)sValue;
+                    g_iRLVOff = !g_iRLVOn;
+                    setRlvState();
+                }
             }
         } else if (iNum == CMD_SAFEWORD || iNum == CMD_RELAY_SAFEWORD) SafeWord("");
         else if (iNum==RLV_QUERY) {
@@ -506,15 +543,9 @@ default {
                     g_lMenu = llDeleteSubList(g_lMenu, iIndex, iIndex);
                 }
             }
-        } else if (iNum == LOADPIN && sStr == llGetScriptName()) {
-            integer iPin = (integer)llFrand(99999.0)+1;
-            llSetRemoteScriptAccessPin(iPin);
-            llMessageLinked(iSender, LOADPIN, (string)iPin+"@"+llGetScriptName(),llGetKey());
         }
         else if (iNum == REBOOT && sStr == "reboot") llResetScript();
         else if (g_iRlvActive) {
-            Indicator(TRUE);
-            llSensorRepeat("N0thin9","abc",ACTIVE,0.1,0.1,0.22);
             if (iNum == RLV_CMD) {
                 //Debug("Received RLV_CMD: "+sStr+" from "+(string)kID);
                 list lCommands=llParseString2List(llToLower(sStr),[","],[]);
@@ -584,7 +615,13 @@ default {
                     if (kID==g_kSitter) llOwnerSay("@"+"sit:"+(string)g_kSitTarget+"=force");  //if we stored a sitter, sit on it
                     rebakeSourceRestrictions(kID);
                 }
-            }
+            } else if(iNum == DO_RLV_REFRESH){
+                llOwnerSay("@clear");
+                llOwnerSay("@detach=n");
+                llMessageLinked(LINK_SET, TIMEOUT_REGISTER, "30", "recheck_lock");
+                llMessageLinked(LINK_SET, RLV_REFRESH, "","");
+                llMessageLinked(LINK_SET, LM_SETTING_REQUEST, "ALL","");
+            } 
         }
 
         if(iNum == LINK_CMD_DEBUG){
@@ -597,11 +634,6 @@ default {
             llInstantMessage(kID, llGetScriptName()+" RLV_ON: "+(string)g_iRLVOn);
         }
         
-    }
-
-    no_sensor() {
-        Indicator(FALSE);
-        llSensorRemove();
     }
 
     timer() {
@@ -666,10 +698,6 @@ state inUpdate{
                 
                 if(llGetLinkNumber()==LINK_ROOT || llGetLinkNumber() == 0)return;
                 
-                list Parameters = llParseStringKeepNulls(llList2String(llGetLinkPrimitiveParams(llGetLinkNumber(), [PRIM_DESC]),0), ["~"],[]);
-                ExtractPart();
-                Parameters += "indicator_"+g_sScriptPart;
-                llSetLinkPrimitiveParams(llGetLinkNumber(), [PRIM_DESC, llDumpList2String(Parameters,"~")]);
                 
                 llOwnerSay("Moving "+llGetScriptName()+"!");
                 integer i=0;

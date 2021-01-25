@@ -30,7 +30,7 @@ integer g_iIsUpdate;
 // list of deprecated tokens to remove from previous collar scripts
 list g_lDeprecatedSettingTokens = ["collarversion","global_integrity","intern_hovers","intern_standhover","leashpoint","auth_groupname",
 "rlvsuite_mask1", "rlvsuite_mask2",
- "rlvsuite_auths" //< - Auths was a token in 7.4 betas which allowed setting access to specific restrictions, but it proved to push us over the memory limit. This may be readded in the future under a different script, and different token name.
+ "rlvsuite_auths", "auth_norun" //< - Auths was a token in 7.4 betas which allowed setting access to specific restrictions, but it proved to push us over the memory limit. This may be readded in the future under a different script, and different token name.
  
  ];
 
@@ -122,7 +122,7 @@ default {
         llOwnerSay("Update will start shortly. Checking for existing settings");
         // build script list
         integer i = llGetInventoryNumber(INVENTORY_SCRIPT);
-        string sName;
+        //string sName;
         integer TotalScriptsFound=i;
         // listen on the start param channel
         llListen(g_iStartParam, "", "", "");
@@ -141,6 +141,7 @@ default {
 
     listen(integer iChannel, string sWho, key kID, string sMsg) {
         if (llGetOwnerKey(kID) != llGetOwner()) return;
+        //llSay(0, "FROM UPDATER: "+sMsg);
         
         list lParts = llParseString2List(sMsg, ["|"], []);
         if (llGetListLength(lParts) == 4) {
@@ -188,15 +189,28 @@ default {
                     if (llGetInventoryType(sName) != INVENTORY_NONE) {
                         llRemoveInventory(sName);
                     }
+                } else if(sType == "LIKE"){
+                    integer iV = 0;
+                    integer iE = llGetInventoryNumber(INVENTORY_ALL);
+                    for(iV=0;iV<iE;iV++){
+                        string name = llGetInventoryName(INVENTORY_ALL,iV);
+                        if(llSubStringIndex(name, sName)!=-1){
+                            if(name != llGetScriptName()){
+                                llRemoveInventory(name);
+                                iV = -1;
+                                iE = llGetInventoryNumber(INVENTORY_ALL);
+                            }
+                        }
+                    }
                 }
                 sCmd = "OK";
             } else if  (sMode == "OPTIONAL") {
                 // only update if present but outdated.  skip if absent.
                 if (llGetInventoryType(sName) == INVENTORY_NONE) {
-                    sCmd = "SKIP";
+                    sCmd = "PROMPT_INSTALL";
                 } else {
                     if (llGetInventoryKey(sName) == kUUID && kUUID != NULL_KEY) {
-                        sCmd = "SKIP";
+                        sCmd = "PROMPT_REMOVE";
                     } else {
                         // we have it but it's the wrong version.  delete and get new one.
                         llRemoveInventory(sName);
@@ -236,11 +250,11 @@ default {
                             }
                             sSetting = sToken+"="+llDumpList2String(lTest,",");
                         }
-                        llMessageLinked(LINK_SET, LM_SETTING_SAVE, sSetting, "");
+                        llMessageLinked(LINK_SET, LM_SETTING_SAVE, sSetting, "origin");
                     } else {
                         //Debug("SP - Deleting :"+ llList2String(sDeprecatedSplitSettingTokenForTest,0));
                          //remove it if it's somehow persistent still
-                        llMessageLinked(LINK_SET, LM_SETTING_DELETE, sToken, "");
+                        llMessageLinked(LINK_SET, LM_SETTING_DELETE, sToken, "origin");
                     }
                 }
             }
@@ -270,9 +284,6 @@ default {
             }
             
             llSleep(15); // oc_sys sleeps for 10 seconds
-            llOwnerSay("Fixing menus ...");
-            llMessageLinked(LINK_SET, CMD_OWNER, "fix", llGetOwner());
-            llSleep(5);
             llOwnerSay("Installation Completed!");
             // delete shim script
             llRemoveInventory(llGetScriptName());
@@ -285,7 +296,10 @@ default {
         if (iNum == LM_SETTING_RESPONSE) {
             if (sStr != "settings=sent") {
                 if (llListFindList(g_lSettings, [sStr]) == -1) {
-                    g_lSettings += [sStr];
+                    if(llListFindList(g_lSettings,["intern_weld=1"])==-1 && llSubStringIndex(sStr, "intern_weldby")!=-1)return;
+                    else{
+                        g_lSettings += [sStr];
+                    }
                 }
             }else{
                 if(g_iIgnoreSent)return;

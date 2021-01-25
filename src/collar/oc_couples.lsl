@@ -3,7 +3,7 @@
 // Cleo Collins, Satomi Ahn, Joy Stipe, Wendy Starfall, Garvin Twine,   
 // littlemousy, Romka Swallowtail, Sumi Perl et al. 
 // Licensed under the GPLv2.  See LICENSE for full details. 
-string g_sScriptVersion="7.3";
+string g_sScriptVersion="8.0";
 integer LINK_CMD_DEBUG=1999;
 DebugOutput(key kID, list ITEMS){
     integer i=0;
@@ -26,6 +26,11 @@ integer g_iPermissionTimeout;
 
 key g_kWearer;
 
+//integer TIMEOUT_READY = 30497;
+//integer TIMEOUT_REGISTER = 30498;
+//integer TIMEOUT_FIRED = 30499;
+
+//list g_lSettingsReqs = [];
 string STOP_COUPLES = "STOP";
 string TIME_COUPLES = "TIME";
 
@@ -82,7 +87,7 @@ integer LM_SETTING_SAVE = 2000;
 //integer LM_SETTING_REQUEST = 2001;
 integer LM_SETTING_RESPONSE = 2002;
 integer LM_SETTING_DELETE = 2003;
-//integer LM_SETTING_EMPTY = 2004;
+integer LM_SETTING_EMPTY = 2004;
 
 integer MENUNAME_REQUEST = 3000;
 integer MENUNAME_RESPONSE = 3001;
@@ -230,8 +235,33 @@ StartNotecards() {
         }
 }
 
-default {
-    on_rez(integer iStart) {
+integer ALIVE = -55;
+integer READY = -56;
+integer STARTUP = -57;
+default
+{
+    on_rez(integer iNum){
+        llResetScript();
+    }
+    state_entry(){
+        llMessageLinked(LINK_SET, ALIVE, llGetScriptName(),"");
+    }
+    link_message(integer iSender, integer iNum, string sStr, key kID){
+        if(iNum == REBOOT){
+            if(sStr == "reboot"){
+                llResetScript();
+            }
+        } else if(iNum == READY){
+            llMessageLinked(LINK_SET, ALIVE, llGetScriptName(), "");
+        } else if(iNum == STARTUP){
+            state active;
+        }
+    }
+}
+state active
+{
+    on_rez(integer iStart) 
+    {
         //added to stop anims after relog when you logged off while in an endless couple anim
         if (g_sSubAnim != "" && g_sDomAnim != "") {
              llSleep(1.0);  // wait a second to make sure the poses script reseted properly
@@ -241,7 +271,6 @@ default {
     }
 
     state_entry() {
-        if (llGetStartParameter()!=0)state inUpdate;
         g_kWearer = llGetOwner();
                 StartNotecards();
         g_sDeviceName = llList2String(llGetLinkPrimitiveParams(1,[PRIM_NAME]),0);
@@ -306,12 +335,26 @@ default {
             list lParams = llParseString2List(sStr, ["="], []);
             string sToken = llList2String(lParams, 0);
             string sValue = llList2String(lParams, 1);
+            
+            //integer ind = llListFindList(g_lSettingsReqs, [sToken]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
+            
             if(sToken == g_sSettingToken + "timeout")
                 g_fTimeOut = (float)sValue;
             else if (sToken == g_sSettingToken + "verbose")
                 g_iVerbose = (integer)sValue;
-            else if (sToken == g_sGlobalToken+"DeviceName")
+            else if (sToken == g_sGlobalToken+"devicename")
                 g_sDeviceName = sValue;
+        } else if(iNum == LM_SETTING_EMPTY){
+            
+            //integer ind = llListFindList(g_lSettingsReqs, [sStr]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
+            
+        } else if(iNum == LM_SETTING_DELETE){
+            
+            //integer ind = llListFindList(g_lSettingsReqs, [sStr]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
+            
         } else if (iNum == DIALOG_RESPONSE) {
             integer iMenuIndex = llListFindList(g_lMenuIDs, [kID]);
             if (~iMenuIndex) {
@@ -510,11 +553,5 @@ default {
             }
         }
 */
-    }
-}
-
-state inUpdate{
-    link_message(integer iSender, integer iNum, string sMsg, key kID){
-        if(iNum == REBOOT)llResetScript();
     }
 }
