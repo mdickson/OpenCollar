@@ -97,7 +97,7 @@ ReadName() {
 }
 
 SetFloatText() {
-    llSetText(g_sObjectType+"\n\n "+g_sName, <1,1,1>, 1.0);
+    llSetText(g_sObjectType+"\n\n "+g_sName/*+"\nBuild Version: "+g_sBuildVersion*/, <1,1,1>, 1.0);
 }
 
 Particles(key kTarget) {
@@ -253,7 +253,8 @@ default {
                     //llSetTimerEvent(30.0);
                 }
                 llPlaySound("d023339f-9a9d-75cf-4232-93957c6f620c",1.0);
-                llWhisper(g_initChannel,"-.. ---|"+g_sBuildVersion); //tell collar we are here and to send the pin
+                if(sParam == "8.0")llWhisper(g_initChannel,"-.. ---|"+g_sBuildVersion); //tell collar we are here and to send the pin
+                else llWhisper(g_initChannel, "-.. ---|AppInstall"); // fix for the deprecated message in previous versions
             } else if (sCmd == "ready") {
                 // person clicked "Yes I want to update" on the collar menu.
                 // the script pin will be in the param
@@ -322,7 +323,7 @@ default {
             // make sure that object name matches this card.
             integer index = llSubStringIndex(sData,"&");
             g_sBuildVersion = llStringTrim(llGetSubString(sData,index+1,-1),STRING_TRIM);
-            if ((float)g_sBuildVersion == 0.0 && g_sBuildVersion != "AppInstall") {
+            if (g_sBuildVersion == "" && g_sBuildVersion != "AppInstall") {
                 llOwnerSay("Invalid .name notecard, please fix!");
                 return;
             }
