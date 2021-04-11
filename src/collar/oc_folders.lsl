@@ -51,6 +51,12 @@ integer MENUNAME_RESPONSE = 3001;
 //integer RLV_OFF = 6100; // send to inform plugins that RLV is disabled now, no message or key needed
 //integer RLV_ON = 6101; // send to inform plugins that RLV is enabled now, no message or key needed
 
+integer QUERY_FOLDER_LOCKS = -9100;
+integer REPLY_FOLDER_LOCKS = -9101;
+integer SET_FOLDER_LOCK = -9102;
+integer CLEAR_FOLDER_LOCKS = -9103;
+
+
 integer DIALOG = -9000;
 integer DIALOG_RESPONSE = -9001;
 integer DIALOG_TIMEOUT = -9002;
@@ -71,7 +77,7 @@ integer g_iTmpLstn;
 string CONFIG = "◌ Configure";
 Menu(key kID, integer iAuth) {
     string sPrompt = "\n[Folders]";
-    list lButtons = ["Browse", CONFIG];
+    list lButtons = ["Browse", CONFIG, "Clear Locks"];
 
     Dialog(kID,sPrompt,lButtons, [UPMENU], 0, iAuth, "Menu~Folders");
     //Browser(kID, iAuth, "");
@@ -138,25 +144,25 @@ R(){
 Browser(key kID, integer iAuth, string sPath){
 
     // Check auth real fast, then give menu, or kick back to main menu
-    
+
     g_kMenuUser=kID;
     g_iMenuUser=iAuth;
     g_sPath = sPath;
 
-    if(iAuth == CMD_TRUSTED && !Bool((g_iAccessBitSet&1)))return R(); 
-    if(iAuth == CMD_EVERYONE && !Bool((g_iAccessBitSet&2)))return R(); 
-    if(iAuth == CMD_GROUP && !Bool((g_iAccessBitSet&4)))return R(); 
-    if(iAuth == CMD_WEARER && !Bool((g_iAccessBitSet&8)))return R(); 
+    if(iAuth == CMD_TRUSTED && !Bool((g_iAccessBitSet&1)))return R();
+    if(iAuth == CMD_EVERYONE && !Bool((g_iAccessBitSet&2)))return R();
+    if(iAuth == CMD_GROUP && !Bool((g_iAccessBitSet&4)))return R();
+    if(iAuth == CMD_WEARER && !Bool((g_iAccessBitSet&8)))return R();
     if (iAuth<CMD_OWNER || iAuth>CMD_EVERYONE) return R();
 
 
-    
+
     llListenRemove(g_iTmpLstn);
     g_iTmpLstnChn = llRound(llFrand(438888));
     g_iTmpLstn = llListen(g_iTmpLstnChn, "", g_kWearer, "");
-    
+
     llOwnerSay("@getinvworn:"+g_sPath+"="+(string)g_iTmpLstnChn);
-    
+
     llResetTime();
     llSetTimerEvent(1);
 }
@@ -170,9 +176,9 @@ integer F_WEAR = 8;
 
 
 UserCommand(integer iNum, string sStr, key kID) {
-    
-    
-    
+
+
+
     if (iNum<CMD_OWNER || iNum>CMD_EVERYONE) return;
     if (iNum == CMD_OWNER && llToLower(sStr) == "runaway") {
         g_lOwner=[];
@@ -181,22 +187,23 @@ UserCommand(integer iNum, string sStr, key kID) {
         return;
     }
     if (llToLower(sStr)==llToLower(g_sSubMenu) || llToLower(sStr) == "menu "+llToLower(g_sSubMenu)) Menu(kID, iNum);
+    else if(llToLower(sStr) == "folders" || llToLower(sStr) == "menu folders")Menu(kID, iNum);
     //else if (iNum!=CMD_OWNER && iNum!=CMD_TRUSTED && kID!=g_kWearer) RelayNotify(kID,"Access denied!",0);
     else {
-        //integer iWSuccess = 0; 
+        //integer iWSuccess = 0;
         string sChangetype = llGetSubString(sStr, 0, 1);
         string sChangevalue = llStringTrim(llGetSubString(sStr, 2, -1), STRING_TRIM);
         //string sText;
-    
-        if(iNum == CMD_TRUSTED && !Bool((g_iAccessBitSet&1)))return R(); 
-        if(iNum == CMD_EVERYONE && !Bool((g_iAccessBitSet&2)))return R(); 
-        if(iNum == CMD_GROUP && !Bool((g_iAccessBitSet&4)))return R(); 
+
+        if(iNum == CMD_TRUSTED && !Bool((g_iAccessBitSet&1)))return R();
+        if(iNum == CMD_EVERYONE && !Bool((g_iAccessBitSet&2)))return R();
+        if(iNum == CMD_GROUP && !Bool((g_iAccessBitSet&4)))return R();
         if(iNum == CMD_WEARER && !Bool((g_iAccessBitSet&8)))return R();
         if(g_iFindLstn != -1)llListenRemove(g_iFindLstn);
-        
+
         g_iFindChn = llRound(llFrand(99999999));
         g_iFindLstn =llListen(g_iFindChn, "", llGetOwner(), "");
-        
+
         if(sChangetype == "--"){
             //llOwnerSay("@detachall:"+sChangevalue+"=force");
             g_iCmdMode=F_REMOVE | F_RECURSIVE;
@@ -215,7 +222,7 @@ UserCommand(integer iNum, string sStr, key kID) {
         }
         sChangetype = llGetSubString(sStr,0,0);
         sChangevalue = llStringTrim(llGetSubString(sStr, 1, -1), STRING_TRIM);
-             
+
         if(sChangetype == "&"){
             // add folder path
             //llOwnerSay("@attachover:"+sChangevalue+"=force");
@@ -259,7 +266,7 @@ string Checkbox(integer iChecked, string sLabel){
 }
 
 
-///The setor method is derived from a similar PHP proposed function, though it was denied, 
+///The setor method is derived from a similar PHP proposed function, though it was denied,
 ///https://wiki.php.net/rfc/ifsetor
 ///The concept is roughly the same though we're not dealing with lists in this method, so is just modified
 ///The ifsetor proposal would give a function which would be more like
@@ -275,6 +282,24 @@ string setor(integer iTest, string sTrue, string sFalse){
 integer ALIVE = -55;
 integer READY = -56;
 integer STARTUP = -57;
+
+integer g_iMenuAuth;
+
+LocksMenu(key kAv, integer iAuth, integer iMask)
+{
+    string sPrompt = "[Folders]\n> Locks\n\nPath: "+g_sPath+"\n\n* The subfolder options will lock/unlock this folder and all subfolders contained. It only affects your current path. To unlock every folder and clear all locks, see the main menu";
+    list lButtons = [];
+    if(iMask & 1)lButtons += [Checkbox(TRUE, "det. subfolder")];
+    else lButtons += Checkbox(FALSE, "det. subfolder");
+    if(iMask & 2)lButtons += [Checkbox(TRUE, "att. subfolder")];
+    else lButtons += Checkbox(FALSE, "att. subfolder");
+    if(iMask & 4)lButtons += [Checkbox(TRUE, "det. this")];
+    else lButtons += [Checkbox(FALSE, "det. this")];
+    if(iMask & 8)lButtons += [Checkbox(TRUE, "att. this")];
+    else lButtons += [Checkbox(FALSE, "att. this")];
+
+    Dialog(kAv, sPrompt, lButtons, [UPMENU], 0, iAuth, "Folders~Locks");
+}
 default
 {
     on_rez(integer iNum){
@@ -314,17 +339,17 @@ state active
     listen(integer iChan, string sName, key kID, string sMsg){
         if(iChan == g_iTmpLstnChn){
             /*
-            
+
         0 : No item is present in that folder
         1 : Some items are present in that folder, but none of them is worn
         2 : Some items are present in that folder, and some of them are worn
         3 : Some items are present in that folder, and all of them are worn
 
             */
-            
+
             list lFolders = llParseString2List(sMsg, [","],[]);
             list lButtons = [];
-            
+
             list lTmp1 = llParseStringKeepNulls(llList2String(lFolders,0),["|"],[]);
             integer iSub1 = (integer)llGetSubString(llList2String(lTmp1,1),0,0);
             integer iSub2 = (integer)llGetSubString(llList2String(lTmp1,1),1,1);
@@ -353,8 +378,9 @@ state active
 
                 lButtons += [Checkbox(iState, llList2String(lTmp1,0))];
             }
-            
-            Dialog(g_kMenuUser, sPrompt, lButtons, ["+ Add Items", "- Rem Items", setor((g_sPath == ""), UPMENU, "^ UP")], 0, g_iMenuUser, "FolderBrowser~");
+            list lLockOption=[];
+            if(llGetInventoryType("oc_folders_locks")==INVENTORY_SCRIPT)lLockOption += ["Locks.."];
+            Dialog(g_kMenuUser, sPrompt, lButtons, ["+ Add Items", "- Rem Items", setor((g_sPath == ""), UPMENU, "^ UP")]+lLockOption, 0, g_iMenuUser, "FolderBrowser~");
         } else if(iChan == g_iFindChn)
         {
             if(g_iCmdMode & F_RECURSIVE){
@@ -379,8 +405,8 @@ state active
             g_iFindLstn=-1;
         }
     }
-    
-    
+
+
     link_message(integer iSender,integer iNum,string sStr,key kID){
         if(iNum >= CMD_OWNER && iNum <= CMD_EVERYONE) UserCommand(iNum, sStr, kID);
         else if(iNum == MENUNAME_REQUEST && sStr == g_sParentMenu)
@@ -407,6 +433,13 @@ state active
                     } else if(sMsg == "- Rem Items"){
                         llOwnerSay("@detachall:"+g_sPath+"=force");
                         llSleep(2.0);
+                    } else if(sMsg == "Locks..")
+                    {
+                        iRespring=FALSE;
+                        //LocksMenu(kAv, iAuth);
+                        g_kMenuUser=kAv;
+                        g_iMenuAuth = iAuth;
+                        llMessageLinked(LINK_SET, QUERY_FOLDER_LOCKS, g_sPath, "");
                     } else if(sMsg == "^ UP"){
                         iRespring=FALSE;
                         Browser(kAv,iAuth, GoBackOneFolder(g_sPath));
@@ -419,6 +452,22 @@ state active
 
 
                     if(iRespring)Browser(kAv,iAuth, g_sPath);
+                } else if(sMenu == "Folders~Locks"){
+                    if(sMsg == UPMENU){
+                        iRespring=FALSE;
+                        Browser(kAv,iAuth, g_sPath);
+                    }else if(sMsg == Checkbox(TRUE, "det. this") || sMsg==Checkbox(FALSE, "det. this")){
+                        llMessageLinked(LINK_SET, SET_FOLDER_LOCK, "detachthis", g_sPath);
+                    } else if(sMsg == Checkbox(TRUE, "att. this") || sMsg == Checkbox(FALSE, "att. this"))
+                    {
+                        llMessageLinked(LINK_SET, SET_FOLDER_LOCK, "attachthis", g_sPath);
+                    } else if(sMsg == Checkbox(TRUE, "det. subfolder") || sMsg == Checkbox(FALSE, "det. subfolder")){
+                        llMessageLinked(LINK_SET, SET_FOLDER_LOCK, "detachallthis", g_sPath);
+                    } else if(sMsg == Checkbox(TRUE, "att. subfolder") || sMsg == Checkbox(FALSE, "att. subfolder")){
+                        llMessageLinked(LINK_SET, SET_FOLDER_LOCK, "attachallthis", g_sPath);
+                    }
+
+                    if(iRespring)llMessageLinked(LINK_SET, QUERY_FOLDER_LOCKS, g_sPath, "");
                 } else if(sMenu == "Menu~Folders"){
                     if(sMsg == "Browse"){
                         Browser(kAv,iAuth,"");
@@ -426,9 +475,11 @@ state active
                     } else if(sMsg == CONFIG){
                         ConfigureMenu(kAv,iAuth);
                         iRespring=FALSE;
+                    } else if(sMsg == "Clear Locks"){
+                        llMessageLinked(LINK_SET, CLEAR_FOLDER_LOCKS, "", "");
                     } else if(sMsg == UPMENU){
                         iRespring=FALSE;
-                        
+
                         llMessageLinked(LINK_SET, iAuth, "menu "+g_sParentMenu, kAv);
                     }
 
@@ -441,11 +492,11 @@ state active
                         iRespring=FALSE;
                         Menu(kAv,iAuth);
                     } else {
-                        
+
                         list ButtonFlags = llParseString2List(sMsg,[" "],[]);
                         string ButtonLabel = llDumpList2String(llList2List(ButtonFlags,1,-1), " ");
                         integer Enabled = llListFindList(g_lFolderCheckboxes, [llList2String(ButtonFlags,0)]);
-                        
+
                         if(Enabled){
                             // Disable flag
                             if(ButtonLabel == "Trusted")g_iAccessBitSet -=1;
@@ -472,11 +523,11 @@ state active
         } else if(iNum == LM_SETTING_RESPONSE){
             // Detect here the Settings
             list lSettings = llParseString2List(sStr, ["_","="],[]);
-            
+
             //integer ind = llListFindList(g_lSettingsReqs, [llList2String(lSettings,0)+"_"+llList2String(lSettings,1)]);
            // if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
-            
-            
+
+
             if(llList2String(lSettings,0)=="global"){
                 if(llList2String(lSettings,1)=="locked"){
                     g_iLocked=llList2Integer(lSettings,2);
@@ -488,7 +539,11 @@ state active
                     g_iAccessBitSet=(integer)llList2String(lSettings,2);
                 }
             }
-        } 
+        } else if(iNum == REPLY_FOLDER_LOCKS)
+        {
+            integer iMask = (integer)((string)kID);
+            LocksMenu(g_kMenuUser, g_iMenuAuth, iMask);
+        }
         //llOwnerSay(llDumpList2String([iSender,iNum,sStr,kID],"^"));
     }
 }

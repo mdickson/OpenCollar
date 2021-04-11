@@ -1,5 +1,5 @@
 // This file is part of OpenCollar.
-// Copyright (c) 2004 - 2017 Francis Chung, Ilse Mannonen, Nandana Singh, 
+// Copyright (c) 2004 - 2021 Francis Chung, Ilse Mannonen, Nandana Singh, 
 // Cleo Collins, Satomi Ahn, Joy Stipe, Wendy Starfall, Garvin Twine,   
 // littlemousy, Romka Swallowtail, Sumi Perl et al. 
 // Licensed under the GPLv2.  See LICENSE for full details. 
@@ -16,7 +16,7 @@ DebugOutput(key kID, list ITEMS){
 }
 
 string g_sParentMenu = "Animations";
-string g_sSubMenu = " Couples";
+string g_sSubMenu = "Couples";
 string UPMENU = "BACK";
 list     g_lMenuIDs;
 integer g_iMenuStride = 3;
@@ -317,7 +317,7 @@ state active
                     }
                 }
             } else if (llToLower(sStr) == "stop couples") StopAnims();
-            else if (sStr == "menu "+g_sSubMenu || sStr == "couples") CoupleAnimMenu(kID, iNum);
+            else if (llToLower(sStr) == "menu "+llToLower(g_sSubMenu) || llToLower(sStr) == "couples") CoupleAnimMenu(kID, iNum);
             else if (sCommand == "couples" && sValue == "verbose") {
                 sValue = llToLower(llList2String(lParams, 2));
                 if (sValue == "off"){

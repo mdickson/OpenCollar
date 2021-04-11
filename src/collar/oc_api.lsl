@@ -1,7 +1,7 @@
     
 /*
 This file is a part of OpenCollar.
-Copyright ©2020
+Copyright ©2021
 
 
 : Contributors :
@@ -110,7 +110,7 @@ key g_kMenuUser;
 integer CalcAuth(key kID, integer iVerbose){
     string sID = (string)kID;
     // First check
-    if(llGetListLength(g_lOwner) == 0 && kID==g_kWearer)
+    if(llGetListLength(g_lOwner) == 0 && kID==g_kWearer && llListFindList(g_lBlock,[sID])==-1)
         return CMD_OWNER;
     else{
         if(llListFindList(g_lBlock,[sID])!=-1)return CMD_BLOCKED;
@@ -517,11 +517,11 @@ state active
         if(llToLower(llGetSubString(m,0,llStringLength(g_sPrefix)-1))==llToLower(g_sPrefix)){
             string CMD=llGetSubString(m,llStringLength(g_sPrefix),-1);
             if(llGetSubString(CMD,0,0)==" ")CMD=llDumpList2String(llParseString2List(CMD,[" "],[]), " ");
-            llMessageLinked(LINK_SET, CMD_ZERO, CMD, i);
+            llMessageLinked(LINK_SET, CMD_ZERO, CMD, llGetOwnerKey(i));
         } else if(llGetSubString(m,0,0) == "*"){
             string CMD = llGetSubString(m,1,-1);
             if(llGetSubString(CMD,0,0)==" ")CMD=llDumpList2String(llParseString2List(CMD,[" "],[])," ");
-            llMessageLinked(LINK_SET, CMD_ZERO, CMD, i);
+            llMessageLinked(LINK_SET, CMD_ZERO, CMD, llGetOwnerKey(i));
         } else {
             list lTmp = llParseString2List(m,[" ","(",")"],[]);
             string sDump = llToLower(llDumpList2String(lTmp, ""));
@@ -544,7 +544,7 @@ state active
             //llOwnerSay( "{API} Calculate auth for "+(string)kID+"="+(string)iAuth+";"+sStr);
             llMessageLinked(LINK_SET, iAuth, sStr, kID);
         } else if(iNum == AUTH_REQUEST){
-            integer iAuth = CalcAuth(kID, TRUE);
+            integer iAuth = CalcAuth(kID, FALSE);
             //llOwnerSay("{API} Calculate auth for "+(string)kID+"="+(string)iAuth+";"+sStr);
             llMessageLinked(LINK_SET, AUTH_REPLY, "AuthReply|"+(string)kID+"|"+(string)iAuth,sStr);
         } else if(iNum >= CMD_OWNER && iNum <= CMD_NOACCESS) UserCommand(iNum, sStr, kID);
@@ -582,7 +582,7 @@ state active
                     g_iLimitRange = (integer)sVal;
                 } else if(sVar == "tempowner"){
                     g_kTempOwner = (key)sVal;
-                } else if(sVar == "runawaydisable"){
+                } else if(sVar == "runaway"){
                     g_iRunaway=(integer)sVal;
                 }
             } else if(sToken == "global"){
@@ -640,7 +640,7 @@ state active
                     g_iLimitRange = TRUE;
                 } else if(sVar == "tempowner"){
                     g_kTempOwner = "";
-                } else if(sVar == "runawaydisable"){
+                } else if(sVar == "runaway"){
                     g_iRunaway=TRUE;
                 }
             } else if(sToken == "global"){
@@ -717,11 +717,11 @@ state active
                 } else if(sMenu == "RunawayMenu"){
                     if(sMsg == "Enable" && iAuth == CMD_OWNER){
                         g_iRunaway=TRUE;
-                        llMessageLinked(LINK_SET, LM_SETTING_DELETE, "AUTH_runawaydisable","origin");
+                        llMessageLinked(LINK_SET, LM_SETTING_DELETE, "AUTH_runaway","origin");
                         llMessageLinked(LINK_SET, TIMEOUT_REGISTER, "5", "spring_access:"+(string)kAv);
                     } else if(sMsg == "Disable"){
                         g_iRunaway=FALSE;
-                        llMessageLinked(LINK_SET, LM_SETTING_SAVE, "AUTH_runawaydisable=0", "origin");
+                        llMessageLinked(LINK_SET, LM_SETTING_SAVE, "AUTH_runaway=0", "origin");
                         llMessageLinked(LINK_SET, TIMEOUT_REGISTER, "5", "spring_access:"+(string)kAv);
                     } else if(sMsg == "No"){
                         // return
