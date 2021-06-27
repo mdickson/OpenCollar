@@ -49,8 +49,8 @@ integer REBOOT              = -1000;
 integer LM_SETTING_SAVE = 2000;
 //integer LM_SETTING_REQUEST = 2001;
 integer LM_SETTING_RESPONSE = 2002;
-//integer LM_SETTING_DELETE = 2003;
-//integer LM_SETTING_EMPTY = 2004;
+integer LM_SETTING_DELETE = 2003;
+integer LM_SETTING_EMPTY = 2004;
 
 integer MENUNAME_REQUEST = 3000;
 integer MENUNAME_RESPONSE = 3001;
@@ -70,6 +70,11 @@ string g_sColorMenu = "Color";
 
 list g_lMenuIDs;  //three strided list of avkey, dialogid, and menuname
 integer g_iMenuStride = 3;
+
+//integer TIMEOUT_READY = 30497;
+//integer TIMEOUT_REGISTER = 30498;
+//integer TIMEOUT_FIRED = 30499;
+
 
 integer g_bHasError = FALSE;
 string g_sErrorMsg = "";
@@ -437,7 +442,30 @@ UserCommand(integer iAuth, string sStr, key kAv) {
     }
 }
 
+integer ALIVE = -55;
+integer READY = -56;
+integer STARTUP = -57;
 default
+{
+    on_rez(integer iNum){
+        llResetScript();
+    }
+    state_entry(){
+        llMessageLinked(LINK_SET, ALIVE, llGetScriptName(),"");
+    }
+    link_message(integer iSender, integer iNum, string sStr, key kID){
+        if(iNum == REBOOT){
+            if(sStr == "reboot"){
+                llResetScript();
+            }
+        } else if(iNum == READY){
+            llMessageLinked(LINK_SET, ALIVE, llGetScriptName(), "");
+        } else if(iNum == STARTUP){
+            state active;
+        }
+    }
+}
+state active
 {
     state_entry() {
         g_sErrorMsg = "";
@@ -467,6 +495,12 @@ default
             string sToken = llList2String(lParams, 0);
             string sValue = llList2String(lParams, 1);
             integer i = llSubStringIndex(sToken, "_");
+            
+            
+            //integer ind = llListFindList(g_lSettingsReqs, [sToken]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
+            
+            
             if (llGetSubString(sToken, 0, i) == g_sSettingToken) {
                 sToken = llGetSubString(sToken, i + 1, -1);
                 if (llGetSubString(sToken,0,-2) == "text") g_lLabelText = llListReplaceList(g_lLabelText,[sValue],(integer)llGetSubString(sToken,-1,-1),(integer)llGetSubString(sToken,-1,-1));
@@ -483,6 +517,16 @@ default
                     g_lCheckboxes = llCSV2List(sValue);
                 }
             }
+        }else if(iNum == LM_SETTING_EMPTY){
+            
+            //integer ind = llListFindList(g_lSettingsReqs, [sStr]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
+            
+        } else if(iNum == LM_SETTING_DELETE){
+            
+            //integer ind = llListFindList(g_lSettingsReqs, [sStr]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
+        
         } else if (iNum == MENUNAME_REQUEST && sStr == g_sParentMenu)
             if (!g_bHasError) llMessageLinked(iSender, MENUNAME_RESPONSE, g_sParentMenu + "|" + g_sSubMenu, "");
             else llOwnerSay(g_sErrorMsg);

@@ -1,7 +1,7 @@
   
 /*
 This file is a part of OpenCollar.
-Copyright ©2019
+Copyright ©2021
 
 : Contributors :
 
@@ -43,12 +43,12 @@ integer CMD_RELAY_SAFEWORD = 511;
 integer NOTIFY = 1002;
 integer REBOOT = -1000;
 
-integer LM_SETTING_SAVE = 2000;//scripts send messages on this channel to have settings saved
+//integer LM_SETTING_SAVE = 2000;//scripts send messages on this channel to have settings saved
 //str must be in form of "token=value"
-integer LM_SETTING_REQUEST = 2001;//when startup, scripts send requests for settings on this channel
-integer LM_SETTING_RESPONSE = 2002;//the settings script sends responses on this channel
-integer LM_SETTING_DELETE = 2003;//delete token from settings
-integer LM_SETTING_EMPTY = 2004;//sent when a token has no value
+//integer LM_SETTING_REQUEST = 2001;//when startup, scripts send requests for settings on this channel
+//integer LM_SETTING_RESPONSE = 2002;//the settings script sends responses on this channel
+//integer LM_SETTING_DELETE = 2003;//delete token from settings
+//integer LM_SETTING_EMPTY = 2004;//sent when a token has no value
 
 integer MENUNAME_REQUEST = 3000;
 integer MENUNAME_RESPONSE = 3001;
@@ -68,7 +68,7 @@ string ALL = "ALL";
 
 Dialog(key kID, string sPrompt, list lChoices, list lUtilityButtons, integer iPage, integer iAuth, string sName) {
     key kMenuID = llGenerateKey();
-    llMessageLinked(LINK_SET, DIALOG, (string)kID + "|" + sPrompt + "|" + (string)iPage + "|" + llDumpList2String(lChoices, "`") + "|" + llDumpList2String(lUtilityButtons, "`") + "|" + (string)iAuth, kMenuID);
+    llMessageLinked(LINK_SET, DIALOG, (string)kID + "|" + sPrompt + "|" + (string)iPage + "|" + llDumpList2String(lChoices, "`") + "|" + llDumpList2String(lUtilityButtons, "`") + "|" + (string)iAuth + "|1", kMenuID);
 
     integer iIndex = llListFindList(g_lMenuIDs, [kID]);
     if (~iIndex) g_lMenuIDs = llListReplaceList(g_lMenuIDs, [kID, kMenuID, sName], iIndex, iIndex + g_iMenuStride - 1);
@@ -84,7 +84,6 @@ Menu(key kID, integer iAuth) {
 }
 
 UserCommand(integer iNum, string sStr, key kID) {
-    if (iNum<CMD_OWNER || iNum>CMD_WEARER) return;
     if (llSubStringIndex(sStr,llToLower(g_sSubMenu)) && sStr != "menu "+g_sSubMenu) return;
     
     if (sStr==g_sSubMenu || sStr == "menu "+g_sSubMenu) Menu(kID, iNum);
@@ -102,10 +101,33 @@ key g_kWearer;
 list g_lMenuIDs;
 integer g_iMenuStride;
 integer g_iLocked=FALSE;
+integer ALIVE = -55;
+integer READY = -56;
+integer STARTUP = -57;
 default
 {
+    on_rez(integer iNum){
+        llResetScript();
+    }
+    state_entry(){
+        llMessageLinked(LINK_SET, ALIVE, llGetScriptName(),"");
+    }
+    link_message(integer iSender, integer iNum, string sStr, key kID){
+        if(iNum == REBOOT){
+            if(sStr == "reboot"){
+                llResetScript();
+            }
+        } else if(iNum == READY){
+            llMessageLinked(LINK_SET, ALIVE, llGetScriptName(), "");
+        } else if(iNum == STARTUP){
+            state active;
+        }
+    }
+}
+state active
+{
     on_rez(integer t){
-        if(llGetOwner()!=g_kWearer) llResetScript();
+        llResetScript();
     }
     state_entry()
     {
@@ -120,7 +142,7 @@ default
     }
 */    
     link_message(integer iSender,integer iNum,string sStr,key kID){
-        if(iNum >= CMD_OWNER && iNum <= CMD_WEARER) UserCommand(iNum, sStr, kID);
+        if(iNum >= CMD_OWNER && iNum <= CMD_EVERYONE) UserCommand(iNum, sStr, kID);
         else if(iNum == MENUNAME_REQUEST && sStr == g_sParentMenu)
             llMessageLinked(iSender, MENUNAME_RESPONSE, g_sParentMenu+"|"+ g_sSubMenu,"");
         else if(iNum == DIALOG_RESPONSE){
@@ -142,13 +164,10 @@ default
                     }
                 }
             }
-        } else if(iNum == LM_SETTING_RESPONSE){
-            // Detect here the Settings
-            list lSettings = llParseString2List(sStr, ["_","="],[]);
-        } else if(iNum == LM_SETTING_DELETE){
-            // This is recieved back from settings when a setting is deleted
-            list lSettings = llParseString2List(sStr, ["_"],[]);
-        }
+        }else if (iNum == DIALOG_TIMEOUT) {
+            integer iMenuIndex = llListFindList(g_lMenuIDs, [kID]);
+            g_lMenuIDs = llDeleteSubList(g_lMenuIDs, iMenuIndex - 1, iMenuIndex +3);  //remove stride from g_lMenuIDs
+        } else if(iNum == REBOOT)llResetScript();
         //llOwnerSay(llDumpList2String([iSender,iNum,sStr,kID],"^"));
     }
 }

@@ -1,11 +1,11 @@
 // This file is part of OpenCollar.
-// Copyright (c) 2006 - 2016 Xylor Baysklef, Kermitt Quirk,        
-// Thraxis Epsilon, Gigs Taggart, Strife Onizuka, Huney Jewell,      
-// Salahzar Stenvaag, Lulu Pink, Nandana Singh, Cleo Collins, Satomi Ahn, 
-// Joy Stipe, Wendy Starfall, Romka Swallowtail, littlemousy,       
-// Garvin Twine et al.  
-// Licensed under the GPLv2.  See LICENSE for full details. 
-string g_sScriptVersion = "7.4";
+// Copyright (c) 2006 - 2021 Xylor Baysklef, Kermitt Quirk,
+// Thraxis Epsilon, Gigs Taggart, Strife Onizuka, Huney Jewell,
+// Salahzar Stenvaag, Lulu Pink, Nandana Singh, Cleo Collins, Satomi Ahn,
+// Joy Stipe, Wendy Starfall, Romka Swallowtail, littlemousy,
+// Garvin Twine et al.
+// Licensed under the GPLv2.  See LICENSE for full details.
+string g_sScriptVersion = "8.0";
 integer LINK_CMD_DEBUG=1999;
 DebugOutput(key kID, list ITEMS){
     integer i=0;
@@ -43,8 +43,8 @@ integer REBOOT = -1000;
 integer LM_SETTING_SAVE = 2000;
 //integer LM_SETTING_REQUEST = 2001;
 integer LM_SETTING_RESPONSE = 2002;
-//integer LM_SETTING_DELETE = 2003;
-//integer LM_SETTING_EMPTY = 2004;
+integer LM_SETTING_DELETE = 2003;
+integer LM_SETTING_EMPTY = 2004;
 
 integer MENUNAME_REQUEST = 3000;
 integer MENUNAME_RESPONSE = 3001;
@@ -74,6 +74,11 @@ integer g_iScroll = FALSE;
 integer g_iShow = FALSE;
 vector g_vColor;
 integer g_iHide;
+//integer TIMEOUT_READY = 30497;
+//integer TIMEOUT_REGISTER = 30498;
+//integer TIMEOUT_FIRED = 30499;
+
+
 
 string g_sLabelText = "";
 
@@ -336,7 +341,7 @@ string Checkbox(integer iValue, string sLabel) {
 MainMenu(key kID, integer iAuth) {
     list lButtons= [g_sTextMenu, g_sColorMenu, g_sFontMenu];
     lButtons += [Checkbox(g_iShow, "Show"), Checkbox(g_iScroll, "Scroll")];
-    
+
 
     string sPrompt = "\n[Label]\t"+g_sAppVersion+"\n\nCustomize the %DEVICETYPE%'s label!";
     Dialog(kID, sPrompt, lButtons, [UPMENU], 0, iAuth,"main");
@@ -422,7 +427,30 @@ UserCommand(integer iAuth, string sStr, key kAv) {
     }
 }
 
+integer ALIVE = -55;
+integer READY = -56;
+integer STARTUP = -57;
 default
+{
+    on_rez(integer iNum){
+        llResetScript();
+    }
+    state_entry(){
+        llMessageLinked(LINK_SET, ALIVE, llGetScriptName(),"");
+    }
+    link_message(integer iSender, integer iNum, string sStr, key kID){
+        if(iNum == REBOOT){
+            if(sStr == "reboot"){
+                llResetScript();
+            }
+        } else if(iNum == READY){
+            llMessageLinked(LINK_SET, ALIVE, llGetScriptName(), "");
+        } else if(iNum == STARTUP){
+            state active;
+        }
+    }
+}
+state active
 {
     state_entry() {
         g_kWearer = llGetOwner();
@@ -449,6 +477,11 @@ default
             string sToken = llList2String(lParams, 0);
             string sValue = llList2String(lParams, 1);
             integer i = llSubStringIndex(sToken, "_");
+
+            //integer ind = llListFindList(g_lSettingsReqs, [sToken]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
+
+
             if (llGetSubString(sToken, 0, i) == g_sSettingToken) {
                 sToken = llGetSubString(sToken, i + 1, -1);
                 if (sToken == "text") g_sLabelText = sValue;
@@ -464,6 +497,15 @@ default
                     g_lCheckboxes = llCSV2List(sValue);
                 }
             }
+        }else if(iNum == LM_SETTING_EMPTY){
+
+            //integer ind = llListFindList(g_lSettingsReqs, [sStr]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
+
+        } else if(iNum == LM_SETTING_DELETE){
+
+            //integer ind = llListFindList(g_lSettingsReqs, [sStr]);
+            //if(ind!=-1)g_lSettingsReqs = llDeleteSubList(g_lSettingsReqs, ind,ind);
         }
         else if (iNum == MENUNAME_REQUEST && sStr == g_sParentMenu)
             llMessageLinked(iSender, MENUNAME_RESPONSE, g_sParentMenu + "|" + g_sSubMenu, "");

@@ -1,6 +1,6 @@
 /*
 This file is a part of OpenCollar.
-Copyright 2019
+Copyright 2021
 
 : Contributors :
 
@@ -28,30 +28,47 @@ string Checkbox(integer iValue, string sLabel) {
 }
 
 
-string g_sScriptVersion = "7.4";
-string g_sAppVersion = "1.0";
+string g_sScriptVersion = "8.0";
+string g_sAppVersion = "1.1";
 
 DebugOutput(key kDest, list lParams){
     llInstantMessage(kDest, llGetScriptName()+": "+llDumpList2String(lParams," "));
 }
+
+integer g_iLimitRange = TRUE;
 //MESSAGE MAP
 //integer CMD_ZERO = 0;
 integer CMD_OWNER = 500;
-integer CMD_TRUSTED = 501;
+//integer CMD_TRUSTED = 501;
 //integer CMD_GROUP = 502;
 integer CMD_WEARER = 503;
 //integer CMD_EVERYONE = 504;
-integer CMD_RLV_RELAY = 507;
+integer CMD_BLOCKED = 598; // <--- Used in auth_request, will not return on a CMD_ZERO
+//integer CMD_RLV_RELAY = 507;
 //integer CMD_SAFEWORD = 510;
-integer CMD_RELAY_SAFEWORD = 511;
+//integer CMD_RELAY_SAFEWORD = 511;
 
 integer CMD_SAFEWORD = 510;
 integer CMD_NOACCESS = 599; // Required for when public is disabled
+
+integer AUTH_REQUEST = 600;
+integer AUTH_REPLY=601;
+
 
 integer g_iEnabled=FALSE ; // DEFAULT
 integer g_iRisky=FALSE;
 integer g_iAutoRelease=FALSE;
 
+
+integer in_range(key kID){
+    if(!g_iLimitRange)return TRUE;
+    if(kID == g_kWearer)return TRUE;
+    else{
+        vector pos = llList2Vector(llGetObjectDetails(kID, [OBJECT_POS]),0);
+        if(llVecDist(llGetPos(),pos) <=20.0)return TRUE;
+        else return FALSE;
+    }
+}
 integer NOTIFY = 1002;
 integer LINK_CMD_DEBUG=1999;
 integer REBOOT = -1000;
@@ -65,19 +82,19 @@ integer LM_SETTING_EMPTY = 2004;//sent when a token has no value
 
 integer MENUNAME_REQUEST = 3000;
 integer MENUNAME_RESPONSE = 3001;
-integer MENUNAME_REMOVE = 3003;
+//integer MENUNAME_REMOVE = 3003;
 
-integer RLV_CMD = 6000;
-integer RLV_REFRESH = 6001;//RLV plugins should reinstate their restrictions upon receiving this message.
+//integer RLV_CMD = 6000;
+//integer RLV_REFRESH = 6001;//RLV plugins should reinstate their restrictions upon receiving this message.
 
-integer RLV_OFF = 6100; // send to inform plugins that RLV is disabled now, no message or key needed
-integer RLV_ON = 6101; // send to inform plugins that RLV is enabled now, no message or key needed
+//integer RLV_OFF = 6100; // send to inform plugins that RLV is disabled now, no message or key needed
+//integer RLV_ON = 6101; // send to inform plugins that RLV is enabled now, no message or key needed
 
 integer DIALOG = -9000;
 integer DIALOG_RESPONSE = -9001;
 integer DIALOG_TIMEOUT = -9002;
 string UPMENU = "BACK";
-string ALL = "ALL";
+//string ALL = "ALL";
 
 integer g_iReleaseTime = 0;
 
@@ -101,8 +118,11 @@ WearerConsent(string SLURL){
     Dialog(g_kWearer, sPrompt, ["YES", "NO"], [], 0, CMD_WEARER, "ConsentPrompt");
 }
 
-StartCapture(key kID, integer iAuth)
+StartCapture(key kID, integer iAuth) // This is a dialog prompt on the cmd no access
 {
+    if(!g_iEnabled)return;
+    if(iAuth == CMD_BLOCKED)return;
+
     Dialog(kID,  "\n[Capture]\n \nDo you want to capture secondlife:///app/agent/"+(string)g_kWearer+"/about?", ["YES", "NO"], [], 0, iAuth, "StartPrompt");
 }
 
@@ -127,23 +147,40 @@ UserCommand(integer iNum, string sStr, key kID) {
     }
     //else if (iNum!=CMD_OWNER && iNum!=CMD_TRUSTED && kID!=g_kWearer) RelayNotify(kID,"Access denied!",0);
     else {
-        integer iWSuccess = 0; 
+        //integer iWSuccess = 0;
         string sChangetype = llList2String(llParseString2List(sStr, [" "], []),0);
         string sChangevalue = llList2String(llParseString2List(sStr, [" "], []),1);
-        string sText;
+        //string sText;
         //llSay(0, sChangetype+": [changetype]");
         //llSay(0, sChangevalue+": [changevalue]");
         //llSay(0, (string)iNum+": [iAuth]");
-        
-        
+
+
         if(sChangetype == "capture"){
             if(sChangevalue == "dump"){
                 if(iNum != CMD_OWNER && iNum != CMD_WEARER)return;
                 llSay(0,(string)g_iFlagAtLoad+" [InitialBootFlags]");
                 llSay(0, (string)g_kCaptor+" [TempOwner]");
                 llSay(0, (string)iNum+" [AuthLevel]");
+            }else if(sChangevalue=="on"){
+                if(g_iEnabled){
+                    llMessageLinked(LINK_SET,NOTIFY, "0Capture mode already enabled.", g_kWearer);
+                }else{
+                    llMessageLinked(LINK_SET,NOTIFY, "0Capture mode enabled.", g_kWearer);
+                    g_iEnabled=TRUE;
+                    Commit();
+                }
+            }else if(sChangevalue=="off"){
+                if(!g_iEnabled){
+                    llMessageLinked(LINK_SET,NOTIFY, "0Capture mode already disabled.", g_kWearer);
+                }else{
+                    llMessageLinked(LINK_SET,NOTIFY, "0Capture mode disabled.", g_kWearer);
+                    g_iEnabled=FALSE;
+                    Commit();
+                }
             }else if(sChangevalue==""){
                 // Attempt to capture
+                if(!g_iEnabled)return;
                 if(g_iCaptured){
                     // Check if ID is captor, as they may be trying to release
                     if(kID == g_kCaptor){
@@ -175,15 +212,16 @@ UserCommand(integer iNum, string sStr, key kID) {
                             g_iCaptured=TRUE;
                             llMessageLinked(LINK_SET, NOTIFY, "0You have been captured by secondlife:///app/agent/"+(string)g_kCaptor+"/about ! If you need to free yourself, you can always use your safeword '"+g_sSafeword+"'. Also by saying your prefix capture", g_kWearer);
                             Commit();
-                        }
-                        else {
+                        } else {
                             // Ask the wearer for consent to allow capture
                             g_kCaptor=kID;
                             if (!g_iCaptured) llSetTimerEvent(1);
                             g_kExpireFor=g_kWearer;
                             g_iExpireMode=1;
                             g_iExpire=llGetUnixTime()+30;
-                            WearerConsent("secondlife:///app/agent/"+(string)kID+"/about");
+
+                            llMessageLinked(LINK_SET, AUTH_REQUEST, "capture", kID);
+//                            WearerConsent("secondlife:///app/agent/"+(string)kID+"/about");
 //                            llSay(0, "=> Ask for consent from wearer <=\n* Not yet implemented");
                         }
                     } else {
@@ -203,10 +241,10 @@ UserCommand(integer iNum, string sStr, key kID) {
                         jump Retry;
                     }
                 }
-                            
+
             }
         }
-        
+
     }
 }
 
@@ -230,10 +268,10 @@ Commit(){
     if(g_iCaptured)StatusFlags+=4; // Used in oc_auth mainly to set the captureIsActive flag
     if(g_iAutoRelease)StatusFlags+=8;
     g_iFlagAtLoad=StatusFlags;
-    
+
     llMessageLinked(LINK_SET, LM_SETTING_SAVE, "capture_status="+(string)StatusFlags,"");
     if(g_iCaptured){
-        llMessageLinked(LINK_SET, LM_SETTING_SAVE, "auth_tempowner="+(string)g_kCaptor,"");
+        llMessageLinked(LINK_SET, LM_SETTING_SAVE, "auth_tempowner="+(string)g_kCaptor,"origin");
         llMessageLinked(LINK_SET, LM_SETTING_SAVE, "capture_isActive=1", ""); // <--- REMOVE AFTER NEXT RELEASE. This is here only for 7.3 compatibility
         if (g_iAutoRelease) {
             g_iReleaseTime = 0;
@@ -242,32 +280,81 @@ Commit(){
     }else{
         if (g_kExpireFor == NULL_KEY) llSetTimerEvent(0);
         llMessageLinked(LINK_SET, CMD_OWNER, "unleash", g_kCaptor);
-        llMessageLinked(LINK_SET, LM_SETTING_DELETE, "auth_tempowner", "");
+        llMessageLinked(LINK_SET, LM_SETTING_DELETE, "auth_tempowner", "origin");
         llMessageLinked(LINK_SET, LM_SETTING_DELETE, "capture_isActive", ""); // <------ REMOVE AFTER NEXT RELEASE
     }
 }
 
 
+integer ALIVE = -55;
+integer READY = -56;
+integer STARTUP = -57;
 default
 {
+    on_rez(integer iNum){
+        llResetScript();
+    }
+    state_entry(){
+        llMessageLinked(LINK_SET, ALIVE, llGetScriptName(),"");
+    }
+    link_message(integer iSender, integer iNum, string sStr, key kID){
+        if(iNum == REBOOT){
+            if(sStr == "reboot"){
+                llResetScript();
+            }
+        } else if(iNum == READY){
+            llMessageLinked(LINK_SET, ALIVE, llGetScriptName(), "");
+        } else if(iNum == STARTUP){
+            state active;
+        }
+    }
+}
+state active
+{
     on_rez(integer t){
-        if(llGetOwner()!=g_kWearer) llResetScript();
+        llResetScript();
     }
     state_entry()
     {
-        if(llGetStartParameter()!=0)state inUpdate;
         g_kWearer = llGetOwner();
         llSleep(2);
         llMessageLinked(LINK_SET, LM_SETTING_REQUEST, "capture_status", ""); // Needed to get the EMPTY reply
     }
-    
+
     link_message(integer iSender,integer iNum,string sStr,key kID){
-        if(iNum == CMD_NOACCESS && sStr == "menu" && g_iEnabled && !g_iCaptured) StartCapture(kID, iNum); // When the collar is touched by someone without permission and capture is enabled show the Capture dialog.
+        if(iNum == CMD_NOACCESS && sStr == "menu" && g_iEnabled && !g_iCaptured && in_range(kID)) StartCapture(kID, iNum); // When the collar is touched by someone without permission and capture is enabled show the Capture dialog.
         if(iNum >= CMD_OWNER && iNum <= CMD_NOACCESS) UserCommand(iNum, sStr, kID);
         if(iNum == MENUNAME_REQUEST && sStr == g_sParentMenu)
             llMessageLinked(iSender, MENUNAME_RESPONSE, g_sParentMenu+"|"+ g_sSubMenu,"");
         else if(iNum == -99999){
-            if(sStr == "update_active")state inUpdate;
+            if(sStr == "update_active")llResetScript();
+
+        } else if(iNum == AUTH_REPLY){
+            list lTmp = llParseString2List(sStr, ["|"],[]);
+            if(llList2String(lTmp,0)=="AuthReply"){
+                if(kID == "capture"){
+                    // check auth
+                    integer iAuth = (integer)llList2String(lTmp,2);
+                    key kAv = (key)llList2String(lTmp,1);
+
+                    if(iAuth == CMD_BLOCKED){
+                        g_kExpireFor="";
+                        g_iExpireMode=0;
+                        g_kCaptor=NULL_KEY;
+                        g_iExpire=0;
+
+                        llMessageLinked(LINK_SET, NOTIFY, "0%NOACCESS% to capture because you have been blocked on this collar", kAv);
+                        return;
+                    }
+                    // auth should be ok, check if enabled
+                    if(!g_iEnabled)return;
+                    // process the capture system, perform wearer consent
+                    WearerConsent("secondlife:///app/agent/"+(string)kAv+"/about");
+                }
+            }
+        } else if (iNum == DIALOG_TIMEOUT) {
+            integer iMenuIndex = llListFindList(g_lMenuIDs, [kID]);
+            g_lMenuIDs = llDeleteSubList(g_lMenuIDs, iMenuIndex - 1, iMenuIndex +3);  //remove stride from g_lMenuIDs
         }
         else if(iNum == DIALOG_RESPONSE){
             integer iMenuIndex = llListFindList(g_lMenuIDs, [kID]);
@@ -284,21 +371,21 @@ default
                         iRespring=FALSE;
                         llMessageLinked(LINK_SET, iAuth, "menu "+g_sParentMenu, kAv);
                     }
-                    
+
                     if(sMsg == Checkbox(g_iEnabled, "Enabled")){
                         g_iEnabled=1-g_iEnabled;
                     }
-                    
+
                     if(sMsg == Checkbox(g_iRisky, "Risky")){
                         g_iRisky=1-g_iRisky;
                     }
-                    
+
                     if (sMsg == Checkbox(g_iAutoRelease,"AutoRelease")){
                         g_iAutoRelease=1-g_iAutoRelease;
                     }
-                    
+
                     Commit();
-                    
+
                     if(iRespring) Menu(kAv, iAuth);
                 } else if(sMenu == "ConsentPrompt"){
                     if(sMsg == "NO"){
@@ -325,7 +412,7 @@ default
                         g_kCaptor=NULL_KEY;
                         Commit();
                     }
-                    
+
                     g_iExpire=0;
                     g_kExpireFor=NULL_KEY;
                     if (!g_iCaptured) llSetTimerEvent(0);
@@ -350,20 +437,24 @@ default
                     if(Flag&2)g_iRisky=TRUE;
                     if(Flag&4)g_iCaptured=TRUE;
                     if(Flag&8)g_iAutoRelease=TRUE;
-                    
-                    
+
+
                     g_iFlagAtLoad=Flag;
                 }
             } else if(llList2String(lSettings,0) == "auth"){
                 if(llList2String(lSettings,1) == "tempowner"){
                     g_kCaptor = (key)llList2String(lSettings,2);
+                } else if(llList2String(lSettings,1) == "limitrange")
+                {
+                    g_iLimitRange = (integer)llList2String(lSettings,2);
                 }
             }
         } else if(iNum == LM_SETTING_DELETE){
             // This is recieved back from settings when a setting is deleted
             list lSettings = llParseString2List(sStr, ["_"],[]);
-            if(llList2String(lSettings,0)=="global")
+            if(llList2String(lSettings,0)=="global"){
                 if(llList2String(lSettings,1) == "locked") g_iLocked=FALSE;
+            }
         } else if(iNum == LM_SETTING_EMPTY){
             if(sStr == "capture_status"){
                 g_iAutoRelease=TRUE;
@@ -383,11 +474,11 @@ default
             DebugOutput(kID, ["CAPTOR", g_kCaptor]);
             DebugOutput(kID, ["MISC", g_iEnabled, g_iRisky, g_iCaptured, g_iExpire, g_kExpireFor, g_iExpireMode]);
         }
-            
+
        // llOwnerSay(llDumpList2String([iSender,iNum,sStr,kID],"^"));
     }
     timer(){
-        if(g_iExpire <=llGetUnixTime() && g_kExpireFor != NULL_KEY){
+        if(g_iExpire <=llGetUnixTime() && g_kExpireFor != ""){
             if (!g_iCaptured) llSetTimerEvent(0);
             llMessageLinked(LINK_SET,NOTIFY, "0Timed Out.",g_kExpireFor);
             g_iExpire=0;
@@ -397,7 +488,7 @@ default
                 g_iExpireMode=0;
             }
         }
-        
+
         if (g_iCaptured && g_iAutoRelease && llGetAgentSize(g_kCaptor) == ZERO_VECTOR){
             if (g_iReleaseTime == 0) {
                 g_iReleaseTime = llGetUnixTime() + 600;
@@ -416,12 +507,6 @@ default
             g_iReleaseTime = 0;
         }
     }
-    
-            
-}
 
-state inUpdate{
-    link_message(integer iSender, integer iNum, string sMsg, key kID){
-        if(iNum == REBOOT)llResetScript();
-    }
+
 }
