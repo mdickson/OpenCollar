@@ -1,4 +1,3 @@
-
 /*
 This file is a part of OpenCollar.
 Copyright ©2021
@@ -7,13 +6,14 @@ Aria (Tashia Redrose)
     * February 2021       -       Created oc_cuff
 Safra (Safra Nitely)
     * June 2021           -       add priority for animations, fix visual lock/unlock
+Lilith (Lilith Xue)
+    * August 2021         -       Add ping for Lockmiester furniture compatibility
 et al.
+
 Licensed under the GPLv2. See LICENSE for full details.
 https://github.com/OpenCollarTeam/OpenCollar
-
 Visual locking system fix by Safra Nitely (based on togglelock by Aria)
 Cuff locking levels system fix by Safra Nitely (using OC standard levles of locking)
-
 */
 list StrideOfList(list src, integer stride, integer start, integer end)
 {
@@ -71,7 +71,7 @@ string Checkbox(integer iValue, string sLabel) {
 //list g_lCollars;
 string g_sAddon = "OpenCollar Cuffs";
 
-string g_sVersion = "1.0.0010";
+string g_sVersion = "2.0.0";
 
 //integer CMD_ZERO            = 0;
 integer CMD_OWNER           = 500;
@@ -159,13 +159,13 @@ Menu(key kID, integer iAuth) {
     sPrompt += "\nCuff Name: "+g_sAddon+"\n";
 
     if(UPDATE_AVAILABLE)sPrompt+="* An update is available!\n";
-    if(g_iAmNewer)sPrompt+="** You are using a pre-release version. Some bugs may be encountered!";
+    // if(g_iAmNewer)sPrompt+="** You are using a pre-release version. Some bugs may be encountered!";
     list lButtons  = [];//"TEST CHAINS"];
 
     if(g_iHasPoses && llGetInventoryType("oc_cuff_pose")==INVENTORY_SCRIPT){
         if(!g_iHidden)
             lButtons+=["Pose"];
-        else sPrompt +="\nPoses not available while the cuffs are hidden";
+        else sPrompt +="\nPoses not available while the Collar is hidden";
     }
 
     if(iAuth == CMD_OWNER)
@@ -879,7 +879,7 @@ default
                                     Link("from_addon", STOP_CUFF_POSE, g_sCurrentPose, g_sPoseName);
                                     g_sCurrentPose="NONE";
                                     Link("from_addon", LM_SETTING_DELETE, "occuffs_"+g_sPoseName+"pose","");
-                                    //Link("from_addon", CLEAR_ALL_CHAINS, "", "");
+                                    Link("from_addon", CLEAR_ALL_CHAINS, "", "");
                                     iRespring=FALSE;
                                     Link("from_addon", TIMEOUT_REGISTER, "2", "respring_poses:"+(string)iAuth+":"+(string)kAv+":"+(string)iPage+":"+(string)llGetKey());
                                 }else if(sMsg == "BACK"){
@@ -887,7 +887,7 @@ default
                                     Menu(kAv,iAuth);
                                 }else{
                                     // activate pose
-                                    //Link("from_addon", CLEAR_ALL_CHAINS, "", "");
+                                    Link("from_addon", CLEAR_ALL_CHAINS, "", "");
                                     g_sCurrentPose=sMsg;
                                     CMD_LEVEL=iAuth;
                                     Link("from_addon", LM_SETTING_SAVE, "occuffs_cmdlevel="+(string)iAuth,"");
@@ -977,8 +977,36 @@ default
         } else if(channel==-8888)
         {
             // LockMeister v2
-            //llSay(0, "Command on LockMeister channel: "+msg);
-
+            key kLMKey = (key)llGetSubString(msg,0,35);
+            list lLMCmd = llParseString2List(msg,["|"],[]);
+            if (kLMKey == llGetOwner())
+            {
+                if (llGetListLength(lLMCmd) > 1) 
+                {  // A Lockmeister command
+                    string sLMCMD = llList2String(lLMCmd,2);
+                    string sLMPoint = llList2String(lLMCmd,3);
+                    if (sLMCMD == "RequestPoint") 
+                    {
+                        key kLink = NULL_KEY;
+                        list lKey = [];
+                        integer iMapIndex = llListFindList(g_lLMV2Map, [sLMPoint]);
+                        if (iMapIndex > -1) 
+                        {
+                            lKey = GetKey(llList2String(g_lLMV2Map, iMapIndex + 1));
+                            if (llList2Integer(lKey, 0) != LINK_ROOT) 
+                            llRegionSayTo(id, -8888,(string)llGetOwner()+"|LMV2|ReplyPoint|"+sLMPoint+"|"+llList2String(lKey, 1)); 
+                        }
+                    }
+                } 
+                else 
+                { // A Lockmeister Ping
+                    string sLMPoint = llGetSubString(msg,36,-1);
+                    if (llListFindList(g_lLMV2Map, [sLMPoint]) > -1) 
+                    {
+                        llRegionSayTo(id, -8888, (string)llGetOwner()+sLMPoint+" ok");
+                    }
+                }
+            }
         } else if(channel == -9119)
         {
             //llSay(0, "Command on LockGuard Channel: "+msg);
@@ -1032,6 +1060,9 @@ default
                         fMaxAge=2+val;
                         ix++;
                     }
+                } else if (llList2String(lCmds, ix)=="ping")
+                {
+                    llRegionSayTo(id, -9119, "lockguard "+(string)llGetOwner()+" "+llList2String(lCmds, ix-1)+" okay");
                 }
                 ix++;
             }
